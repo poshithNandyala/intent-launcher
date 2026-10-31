@@ -54,6 +54,10 @@ object Store {
     var checkIn: Boolean get() = bool("check_in", true); set(v) = putB("check_in", v)
     /** One quote a day on the home screen. */
     var showQuote: Boolean get() = bool("show_quote", true); set(v) = putB("show_quote", v)
+    /** Shorts and Reels: step in when you start swiping (needs the "Intent · Shorts & Reels" service). */
+    var reelsOn: Boolean get() = bool("reels_on", true); set(v) = putB("reels_on", v)
+    /** After "watch more", how many swipes before Intent asks again. 0: the swipe always stops you. */
+    var reelsAllow: Int get() = int("reels_allow", 10); set(v) = putI("reels_allow", v)
     /** If the unlock question gets no answer, lock the phone again (needs Focus Guard). */
     var lockIfNoAnswer: Boolean get() = bool("lock_no_answer", true); set(v) = putB("lock_no_answer", v)
     var autoOpenSingle: Boolean get() = bool("auto_open_single", false); set(v) = putB("auto_open_single", v)

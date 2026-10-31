@@ -94,6 +94,14 @@
             android:launchMode="singleTask"
             android:taskAffinity="com.poshith.intent.gate" />
 
+        <!-- The pause over YouTube Shorts and Instagram Reels (from the Shorts & Reels guard). -->
+        <activity
+            android:name=".ReelsActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.poshith.intent.gate" />
+
         <activity
             android:name=".OnboardingActivity"
             android:excludeFromRecents="true"
@@ -129,6 +137,22 @@
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/focus_guard" />
+        </service>
+
+        <!-- Optional "Shorts & Reels" guard, separate from Focus Guard and off until you turn it on.
+             Android tells it only about scrolling inside YouTube and Instagram; it looks at view names
+             (like "reel_recycler"), never text, to count swipes through Shorts and Reels. -->
+        <service
+            android:name=".guard.ReelsGuardService"
+            android:exported="false"
+            android:label="@string/reels_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/reels_guard" />
         </service>
 
         <receiver

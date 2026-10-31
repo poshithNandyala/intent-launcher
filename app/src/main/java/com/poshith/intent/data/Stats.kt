@@ -18,6 +18,8 @@ object Stats {
         val plannedMin: Int,
         val justChecking: Int,
         val perApp: Map<String, IntArray>, // pkg -> [pauses, notNow, sessions]
+        val shorts: Int = 0,
+        val reels: Int = 0,
     )
 
     @Synchronized
@@ -47,6 +49,10 @@ object Stats {
     fun notNow(pkg: String) = bump(pkg, "notNow", appIndex = 1)
     fun sessionStarted(pkg: String, minutes: Int) { bump(pkg, "sessions", appIndex = 2); bump(null, "planned", minutes) }
     fun justChecking() = bump(null, "justChecking")
+    /** One more swipe through YouTube Shorts or Instagram Reels (counted only with the Shorts & Reels guard on). */
+    fun shortVideo(feed: com.poshith.intent.core.Feed) = bump(null, if (feed == com.poshith.intent.core.Feed.SHORTS) "shorts" else "reels")
+    fun shortVideosToday(feed: com.poshith.intent.core.Feed): Int = day().let { if (feed == com.poshith.intent.core.Feed.SHORTS) it.shorts else it.reels }
+    fun shortVideosToday(): Int = day().let { it.shorts + it.reels }
 
     fun day(key: String = Store.dayKey()): Day {
         val all = try { JSONObject(Store.raw().getString(KEY, "{}") ?: "{}") } catch (_: Exception) { JSONObject() }
@@ -59,7 +65,7 @@ object Stats {
             }
         }
         return Day(key, d.optInt("pauses"), d.optInt("notNow"), d.optInt("sessions"), d.optInt("planned"),
-            d.optInt("justChecking"), per)
+            d.optInt("justChecking"), per, d.optInt("shorts"), d.optInt("reels"))
     }
 
     /** Sessions started today for this app (the pause grows with each one). */

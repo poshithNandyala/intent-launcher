@@ -30,7 +30,8 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
 | **Wind-down** | At night, mindful apps rest (optionally all non-essentials). |
 | **Check-in times** | Email or work chat can open only in your check-in windows (12:30 and 18:30 by default). |
 | **"What did you pick up your phone for?"** | A quiet card right after you unlock. "A call or message" shows Phone, Messages and WhatsApp; "Just checking" locks the phone; no answer in 15 s locks it too (with Focus Guard). |
-| **A line worth stopping for** | One quote a day under the date, from Seneca, Thoreau, Annie Dillard, James Clear, Alex Hormozi and others, plus a few of Intent's own. Another waits on the pause, the break and "time's up". Tap it for the next; turn it off in Settings. |
+| **Shorts and Reels** | The one you open is fine; the endless swipe is the trap. With the optional Shorts & Reels guard, the first swipe through YouTube Shorts or Instagram Reels gets a pause: today's count, a line worth reading, a big "Close YouTube", "Leave Shorts" to keep the rest of the app, and a small "Watch 10 more" (or none, if you'd rather the swipe always stops you). Each "more" waits a little longer. The count shows on your home screen too. |
+| **A line worth stopping for** | A quote under the date, new every 30 seconds, on a soft pane so it reads on any wallpaper: Seneca, Thoreau, Annie Dillard, James Clear, Alex Hormozi and others, plus a few of Intent's own. Another waits on the pause, the break and "time's up". Tap it for the next; turn it off in Settings. |
 | **Screen time you can feel** | Today's screen time under the date. Time in the apps that pull you grows heavier as it climbs; calls, maps and work are never singled out. |
 | **Rules you set while calm** | Making an app harder to open is instant. Making it easier waits 20 s (adjustable). Nothing ever stops you from changing a rule, switching launchers or uninstalling. |
 | **The Mind library** | Swipe right: 50+ short lessons, each with its source and an honest evidence label, covering the science and how people like Warren Buffett, Bill Gates, Pavel Durov and Christopher Nolan use (or don't use) their phones. It ends, on purpose. |
@@ -48,7 +49,8 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
 4. Optional but recommended: **turn on Focus Guard** (*Settings › Accessibility › Intent · Focus Guard*).
    On Android 13 and newer, apps installed from a file get a **"Restricted setting"** message at this step. Fix it like this: *Settings › Apps › Intent › ⋮ (top right) › Allow restricted settings*, then try again.
    On **Xiaomi, Redmi and POCO** phones, also allow *Display pop-up windows while running in the background* in Intent's permissions (Intent's Focus Guard screen has a button for it), or the pause can't appear over other apps.
-5. Optional: allow **usage access** for unlock counts, and notifications for "time's up" reminders when Focus Guard is off.
+5. Optional: turn on **Intent · Shorts & Reels** in the same Accessibility list to pause the swipe through YouTube Shorts and Instagram Reels (Intent › Settings › Shorts and Reels walks you through it).
+6. Optional: allow **usage access** for unlock counts, and notifications for "time's up" reminders when Focus Guard is off.
 
 Requires Android 8.0 or newer. The APK is about 300 KB.
 
@@ -56,11 +58,11 @@ If Intent ever crashes, it shows what went wrong with a **Copy details** button 
 
 ## Privacy
 
-Intent has **no internet permission**, so it cannot send anything anywhere. There are no accounts, ads, analytics or trackers. Focus Guard sees only *which* app is in front (its package name) and **cannot read your screen** (`canRetrieveWindowContent="false"`). Everything stays in one private file on the phone. Details: [PRIVACY.md](PRIVACY.md).
+Intent has **no internet permission**, so it cannot send anything anywhere. There are no accounts, ads, analytics or trackers. Focus Guard sees only *which* app is in front (its package name) and **cannot read your screen** (`canRetrieveWindowContent="false"`). The optional Shorts & Reels guard is told only about scrolling inside YouTube and Instagram and looks at view names (like `reel_recycler`), never text. Everything stays in one private file on the phone. Details: [PRIVACY.md](PRIVACY.md).
 
 ## How it decides
 
-Every way of opening an app (home screen, search, and with Focus Guard on, notifications, recents and links) goes through one function, [`Policy.decide`](app/src/main/java/com/poshith/intent/core/Policy.kt). It's pure Kotlin with [90 unit tests](app/src/test/java/com/poshith/intent/core/Tests.kt):
+Every way of opening an app (home screen, search, and with Focus Guard on, notifications, recents and links) goes through one function, [`Policy.decide`](app/src/main/java/com/poshith/intent/core/Policy.kt). It's pure Kotlin with [116 unit tests](app/src/test/java/com/poshith/intent/core/Tests.kt):
 
 ```
 protected app (phone, settings, keyboard…)  → open

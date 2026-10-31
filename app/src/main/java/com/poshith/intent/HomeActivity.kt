@@ -104,6 +104,17 @@ class HomeActivity : BaseActivity() {
     private var shownCheckInFor = 0L
     private var resumed = false
     private var away = true // home was fully hidden (another app, screen off): settle in on return
+    private var quoteBox: LinearLayout? = null
+    private var quoteText: TextView? = null
+    private var quoteBy: TextView? = null
+    private var quoteNow = com.poshith.intent.core.Quotes.all.first()
+    private val quoteTicker = object : Runnable {
+        override fun run() {
+            val now = System.currentTimeMillis()
+            showQuote(com.poshith.intent.core.Quotes.forMoment(now, QUOTE_MS), animate = true)
+            ui.postDelayed(this, QUOTE_MS - now % QUOTE_MS + 50)
+        }
+    }
     private var layoutSig = ""
     private val barsListener: (com.poshith.intent.ui.Bars) -> Unit = { b ->
         if (::page.isInitialized) page.setPadding(dp(30) + b.left, b.top + dp(34), dp(30) + b.right, b.bottom + dp(6))
@@ -120,6 +131,7 @@ class HomeActivity : BaseActivity() {
 
     companion object {
         private const val AUTO_LOCK_MS = 15_000L
+        private const val QUOTE_MS = 30_000L
         private val REFRESH_KEYS = setOf("home", "labels", "rules", "one_thing", "focus_until", "focus_kind", "wd_on",
             "wd_start", "wd_end", "theme", "font", "align", "text_scale", "show_date", "show_stats", "show_one_thing",
             "morning_until", "hidden", "show_quote")
@@ -149,6 +161,12 @@ class HomeActivity : BaseActivity() {
         refresh()
         IntentApp.onUnlock(unlockListener)
         ui.removeCallbacks(ticker); ui.postDelayed(ticker, 20_000)
+        if (quoteText != null) {
+            // Back home: the line for this moment, then a new one every 30 seconds.
+            val now = System.currentTimeMillis()
+            showQuote(com.poshith.intent.core.Quotes.forMoment(now, QUOTE_MS), animate = false)
+            ui.removeCallbacks(quoteTicker); ui.postDelayed(quoteTicker, QUOTE_MS - now % QUOTE_MS + 50)
+        }
         maybeCheckIn()
         ui.postDelayed({ if (resumed) maybeCheckIn() }, 500)
         if (away) { away = false; settle() }
@@ -161,6 +179,7 @@ class HomeActivity : BaseActivity() {
         breakScreen?.stop()
         IntentApp.removeUnlock(unlockListener)
         ui.removeCallbacks(ticker)
+        ui.removeCallbacks(quoteTicker)
     }
 
     override fun onStop() {
@@ -349,25 +368,37 @@ class HomeActivity : BaseActivity() {
         }.legible()
         page.addView(statsLine, lp())
 
-        // Today's line: one quote a day, quiet. Tap for another.
+        // A line worth stopping for: a new one every 30 seconds, or tap for the next. On a wallpaper it
+        // sits on a soft pane in full-strength text, so it reads on any picture, light or busy.
+        quoteBox = null; quoteText = null; quoteBy = null
         if (Store.showQuote) {
-            var q = com.poshith.intent.core.Quotes.forDay(Store.dayNumber())
-            val quote = text("", scale(16.5f), k.text2, Fonts.light(this)).apply {
-                gravity = g; setLineSpacing(0f, 1.3f); setPadding(0, dp(26), 0, dp(4))
+            val onWall = Store.wallpaper
+            val quote = text("", scale(16f), if (onWall) k.text else k.text2, if (onWall) Fonts.regular(this) else Fonts.light(this)).apply {
+                gravity = g; setLineSpacing(0f, 1.28f)
                 breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED // even lines, no lonely last word
             }.legible()
-            val by = text("", scale(12.5f), k.text3, Fonts.medium(this)).apply { gravity = g; letterSpacing = 0.06f }.legible()
-            fun show() { quote.text = "“${q.text}”"; by.text = q.by.uppercase(); by.visibility = if (q.by.isBlank()) View.GONE else View.VISIBLE }
-            show()
+            val by = text("", scale(11.5f), if (onWall) k.text2 else k.text3, Fonts.medium(this)).apply {
+                gravity = g; letterSpacing = 0.08f; setPadding(0, dp(8), 0, 0)
+            }.legible()
             val box = vbox(g).apply {
-                background = ripple(null, dp(12).toFloat())
+                if (onWall) {
+                    val r = dp(20).toFloat()
+                    background = ripple(rounded(if (k.dark) 0x52000000 else 0x73FFFFFF, r), r)
+                    setPadding(dp(18), dp(14), dp(18), dp(15))
+                } else background = ripple(null, dp(12).toFloat())
                 setOnClickListener {
-                    it.tick(); q = com.poshith.intent.core.Quotes.next(q)
-                    if (animationsOn()) { alpha = 0f; show(); animate().alpha(1f).setDuration(300).start() } else show()
+                    it.tick()
+                    showQuote(com.poshith.intent.core.Quotes.next(quoteNow), animate = true)
+                    ui.removeCallbacks(quoteTicker); ui.postDelayed(quoteTicker, QUOTE_MS)
                 }
                 addView(quote, lp()); addView(by, lp())
             }
-            page.addView(box, lp())
+            // The pane reaches a little into the margin, so its words line up with the clock and apps.
+            val bleed = if (onWall) dp(18) else 0
+            page.addView(box, lp().apply { topMargin = dp(if (onWall) 18 else 24); leftMargin = -bleed; rightMargin = -bleed })
+            page.clipToPadding = false
+            quoteBox = box; quoteText = quote; quoteBy = by
+            showQuote(com.poshith.intent.core.Quotes.forMoment(System.currentTimeMillis(), QUOTE_MS), animate = false)
         }
 
         // Everything below the clock sits at the bottom, near your thumb. It only scrolls if it can't
@@ -424,6 +455,27 @@ class HomeActivity : BaseActivity() {
 
         // Taps on empty space: double-tap to lock, long-press to edit.
         page.setOnTouchListener { _, e -> taps.onTouchEvent(e); true }
+    }
+
+    /** Shows [q] in the quote pane: a soft cross-fade of the words, the pane itself stays put. */
+    private fun showQuote(q: com.poshith.intent.core.Quote, animate: Boolean) {
+        val t = quoteText ?: return
+        val by = quoteBy ?: return
+        if (q == quoteNow && t.text.isNotEmpty()) return
+        quoteNow = q
+        fun put() {
+            t.text = "“${q.text}”"
+            by.text = q.by.uppercase()
+            by.visibility = if (q.by.isBlank()) View.GONE else View.VISIBLE
+        }
+        if (!animate || !animationsOn() || !resumed) { put(); return }
+        by.animate().cancel(); by.animate().alpha(0f).setDuration(200).start()
+        t.animate().cancel()
+        t.animate().alpha(0f).setDuration(200).withEndAction {
+            put()
+            t.animate().alpha(1f).setDuration(420).start()
+            by.animate().alpha(1f).setDuration(420).start()
+        }.start()
     }
 
     /**
@@ -592,9 +644,10 @@ class HomeActivity : BaseActivity() {
             val usage = Usage.today(this)
             val mindful = Store.packagesWithMode(Mode.MINDFUL)
             val notNow = Stats.notNowToday()
+            val videos = Stats.shortVideosToday()
             runOnUiThread {
                 if (isDestroyed || breakScreen != null) return@runOnUiThread
-                statsLine.text = screenTime(usage, mindful, notNow)
+                statsLine.text = screenTime(usage, mindful, notNow, videos)
                 statsLine.visibility = if (statsLine.text.isBlank()) View.GONE else View.VISIBLE
             }
         }
@@ -605,13 +658,26 @@ class HomeActivity : BaseActivity() {
      * brighter past an hour, then warm amber with a plain comparison. Calls, maps and work time are
      * never singled out.
      */
-    private fun screenTime(usage: Usage.Today?, mindful: Set<String>, notNow: Int): CharSequence {
+    private fun screenTime(usage: Usage.Today?, mindful: Set<String>, notNow: Int, videos: Int): CharSequence {
         val k = ink()
-        if (usage == null) return if (notNow > 0) "Not now ×$notNow today" else ""
-        val total = usage.totalMs(packageName)
+        val out = android.text.SpannableStringBuilder()
+        if (usage == null) {
+            if (notNow > 0) out.append("Not now ×$notNow today")
+        } else {
+            out.append("${Usage.formatMinutes(usage.totalMs(packageName))} on your phone today")
+            if (notNow > 0) out.append(" · not now ×$notNow")
+        }
+        // Swipes through Shorts and Reels: plain at first, brighter past 30, warm past 60.
+        if (videos > 0) {
+            val first = out.isEmpty()
+            if (!first) out.append(" · ")
+            val start = out.length
+            out.append("$videos short video${if (videos == 1) "" else "s"}${if (first) " today" else ""}")
+            val c = when { videos >= 60 -> k.warn; videos >= 30 -> k.text; else -> 0 }
+            if (c != 0) out.setSpan(android.text.style.ForegroundColorSpan(c), start, out.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        if (usage == null) return out
         val pull = usage.msFor(mindful)
-        val out = android.text.SpannableStringBuilder("${Usage.formatMinutes(total)} on your phone today")
-        if (notNow > 0) out.append(" · not now ×$notNow")
         if (pull >= 30 * 60_000L) {
             val line = StringBuilder("${Usage.formatMinutes(pull)} of it in pull apps")
             val color = when {

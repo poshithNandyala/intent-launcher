@@ -1,0 +1,102 @@
+package com.poshith.intent.core
+
+/** The endless short-video feeds Intent can step into, when you turn that on. */
+enum class Feed(val packages: Set<String>, val app: String, val one: String, val many: String) {
+    SHORTS(setOf("com.google.android.youtube", "app.revanced.android.youtube"), "YouTube", "Short", "Shorts"),
+    REELS(setOf("com.instagram.android"), "Instagram", "Reel", "Reels");
+
+    companion object {
+        fun of(pkg: String?): Feed? = values().firstOrNull { pkg != null && pkg in it.packages }
+    }
+}
+
+/**
+ * How a swipe through Shorts or Reels is told apart from everything else: by the names (resource
+ * IDs) of the view that scrolled and the views around it, never by anything you see or type.
+ * A swipe counts when that chain includes the feed's full-screen pager and isn't inside comments or
+ * another sheet. The names are the ones current open-source blockers rely on (2026). Several are
+ * kept for each app, because the apps rename things now and then.
+ */
+object FeedIds {
+    private val PAGER = mapOf(
+        Feed.SHORTS to listOf("reel_recycler", "reel_watch", "reel_player", "shorts_player", "shorts_video"),
+        Feed.REELS to listOf("clips_viewer_view_pager", "clips_view_pager"),
+    )
+    private val SHEETS = mapOf(
+        Feed.SHORTS to listOf("comment", "reply", "bottom_sheet", "results"),
+        Feed.REELS to listOf("comment", "bottom_sheet", "recycler_view_container_id"),
+    )
+
+    /** [path]: the scrolled view's ID first, then its parents' (short names, without "package:id/"). */
+    fun isFeedSwipe(feed: Feed, path: List<String>): Boolean {
+        val pager = PAGER.getValue(feed)
+        val sheets = SHEETS.getValue(feed)
+        return path.any { id -> pager.any { id.contains(it) } } && path.none { id -> sheets.any { id.contains(it) } }
+    }
+
+    /** "com.google.android.youtube:id/reel_recycler" → "reel_recycler". */
+    fun short(id: String?): String = id?.substringAfter(":id/").orEmpty()
+}
+
+/**
+ * One sitting in a feed: the swipes since you came in, and when Intent steps in.
+ *
+ * The one you opened (from a friend, a link, search) is always fine: it's the chain that gets a
+ * pause. The first swipe to another one asks, every time, until you choose to keep watching; then
+ * [keepGoing] lets a set number through before it asks again, with a little longer to wait for the
+ * "more" button each time. A sitting ends after a few quiet minutes, so leaving and coming straight
+ * back doesn't start over.
+ */
+class Sitting {
+    enum class Ask { NONE, START, MORE }
+
+    /** New swipes this sitting. */
+    var swipes = 0
+        private set
+    /** How many times you chose to keep watching this sitting. */
+    var continues = 0
+        private set
+    private var allowedUntil = 0
+    private var lastSwipeAt = 0L
+    private var started = false
+
+    /** A scroll of the feed's pager at [now] (ms). True if it's a new swipe, not more of the last one. */
+    fun swipe(now: Long): Boolean {
+        if (started && now - lastSwipeAt > GAP_MS) reset()
+        val fresh = !started || now - lastSwipeAt > SWIPE_MS
+        started = true
+        lastSwipeAt = now
+        if (fresh) swipes++
+        return fresh
+    }
+
+    /** After a new swipe: should Intent step in? */
+    fun ask(): Ask = when {
+        continues == 0 -> Ask.START
+        swipes > allowedUntil -> Ask.MORE
+        else -> Ask.NONE
+    }
+
+    /** "Watch [n] more": the next [n] swipes go through. */
+    fun keepGoing(n: Int) {
+        continues++
+        allowedUntil = swipes + n
+    }
+
+    /** Seconds before "watch more" can be tapped: none the first time, then 5 s more each time (max 20). */
+    fun waitSec(): Int = (continues * 5).coerceAtMost(20)
+
+    fun reset() {
+        swipes = 0
+        continues = 0
+        allowedUntil = 0
+        started = false
+    }
+
+    companion object {
+        /** Scroll events closer together than this are one swipe (the page settling). */
+        const val SWIPE_MS = 600L
+        /** This long without a swipe, and the next one starts a new sitting. */
+        const val GAP_MS = 3 * 60_000L
+    }
+}

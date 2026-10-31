@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Scroll events from YouTube and Instagram only. It reads the names (resource IDs) of the view that
+     scrolled and the views around it, to tell a swipe through Shorts or Reels from anything else.
+     It never reads text. -->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeViewScrolled"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:accessibilityFlags="flagReportViewIds"
+    android:canRetrieveWindowContent="true"
+    android:description="@string/reels_description"
+    android:notificationTimeout="100"
+    android:packageNames="com.google.android.youtube,app.revanced.android.youtube,com.instagram.android" />

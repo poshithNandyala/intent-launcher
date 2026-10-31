@@ -21,6 +21,9 @@ import com.poshith.intent.data.Apps
 import com.poshith.intent.data.Store
 import com.poshith.intent.data.Usage
 import com.poshith.intent.guard.Launch
+import com.poshith.intent.data.Stats
+import com.poshith.intent.core.Feed
+import com.poshith.intent.guard.ReelsGuardService
 import com.poshith.intent.guard.Reminder
 import com.poshith.intent.ui.AppPicker
 import com.poshith.intent.ui.BaseActivity
@@ -93,6 +96,7 @@ class SettingsActivity : BaseActivity() {
             "checkins" -> pageCheckIns()
             "blocked" -> pagePicker(Mode.BLOCKED)
             "hidden" -> pageHidden()
+            "reels" -> pageReels()
             "focus" -> pageFocus()
             "gestures" -> pageGestures()
             "appearance" -> pageAppearance()
@@ -163,6 +167,7 @@ class SettingsActivity : BaseActivity() {
         add(row("Check-in times", "Open only at set times: ${names(Store.packagesWithMode(Mode.BATCHED))}", null) { go("checkins") })
         add(row("Blocked", names(Store.packagesWithMode(Mode.BLOCKED)), null) { go("blocked") })
         add(row("Hidden from search", "${Store.hidden.size} hidden", null) { go("hidden") })
+        add(row("Shorts and Reels", reelsSummary(), null) { go("reels") })
         add(sectionTitle("Your day"))
         add(row("Focus, wind-down and mornings", "Wind-down " + (if (Store.windDownOn) "${timeLabel(Store.windDownStart)}–${timeLabel(Store.windDownEnd)}" else "off") +
             " · morning quiet " + (if (Store.morningQuietMin > 0) "${Store.morningQuietMin} min" else "off"), null) { go("focus") })
@@ -457,6 +462,9 @@ class SettingsActivity : BaseActivity() {
         add(row("Focus Guard", if (guard) "Pauses mindful apps from anywhere and ends sessions on time"
             else "Off: pauses only apps opened from Intent; sessions end with a notification", status(guard)) { guardSheet(this) })
         val usage = Usage.hasAccess(this)
+        val reels = ReelsGuardService.isOn(this)
+        add(row("Shorts & Reels guard", if (reels) "Steps in when you start swiping through Shorts or Reels"
+            else "Off: Shorts and Reels play without a pause", status(reels)) { reelsSheet(this) })
         add(row("Usage access", if (usage) "Honest unlock counts and minutes, computed on the phone" else "Optional: for unlock counts and minutes", status(usage)) { usageSheet() })
         if (Build.VERSION.SDK_INT >= 33) {
             val n = Reminder.canNotify(this)
@@ -468,6 +476,48 @@ class SettingsActivity : BaseActivity() {
         add(sectionTitle("What Focus Guard can and can't do"))
         add(paragraph("It learns only which app is in front (its package name). It can't read your screen, messages or passwords, can't go online (Intent has no internet permission), and you can switch it off any time in Android's accessibility settings. Some phones limit background apps; if pauses stop appearing, allow Intent to run without battery restrictions.", 14.5f))
         add(row("Battery settings for Intent", null, null) { Launch.ownAppInfo(this) })
+    }
+
+    // ---------------------------------------------------------------------------------- shorts and reels
+
+    private fun reelsSummary(): String = when {
+        !ReelsGuardService.isOn(this) -> "Off · needs one switch in Android settings"
+        !Store.reelsOn -> "Paused"
+        else -> (if (Store.reelsAllow == 0) "The swipe always stops you" else "Asks at the first swipe, then every ${Store.reelsAllow}") +
+            " · ${Stats.shortVideosToday()} today"
+    }
+
+    private fun pageReels() {
+        header("Shorts and Reels", "The one you open is fine. The endless swipe is the trap. When you start swiping through YouTube Shorts or Instagram Reels, Intent steps in: today's count, a line worth reading, and a big button to close the app.")
+        val on = ReelsGuardService.isOn(this)
+        if (!on) {
+            val card = vbox().apply {
+                setPadding(dp(20), dp(16), dp(20), dp(16))
+                background = com.poshith.intent.ui.rounded(P.surface, dp(18).toFloat())
+            }
+            card.addView(text("One switch in Android settings", 17f, P.text, Fonts.medium(this)))
+            card.addView(text("Turn on “Intent · Shorts & Reels” in Accessibility. It's separate from Focus Guard, so you can have either or both.", 15f, P.text2).apply {
+                setLineSpacing(0f, 1.2f); setPadding(0, dp(6), 0, dp(10))
+            })
+            card.addView(button("Turn it on", Kind.PRIMARY) { reelsSheet(this) }, lp(ViewGroup.LayoutParams.WRAP_CONTENT))
+            col.addView(card, lp().apply { leftMargin = dp(16); rightMargin = dp(16); topMargin = dp(8) })
+        }
+        add(row("Step in when I swipe", if (Store.reelsOn) "On" else "Paused: Shorts and Reels play as usual", if (Store.reelsOn) "On" else "Off") {
+            if (Store.reelsOn) confirmLoosen("Pause it?", "Shorts and Reels would play without stopping you.", "Pause it") { Store.reelsOn = false; render() }
+            else { Store.reelsOn = true; render() }
+        })
+        add(sectionTitle("After the first swipe"))
+        add(paragraph("The first swipe always asks. If you choose to keep watching, how many before it asks again? “None” means the swipe always stops you.", 14.5f))
+        fun label(v: Int) = if (v == 0) "None" else "$v"
+        add(chips(intArrayOf(0, 5, 10, 20), Store.reelsAllow, { label(it) }) { v ->
+            if (v > Store.reelsAllow) confirmLoosen("Allow more?", "From ${label(Store.reelsAllow)} to $v before it asks again.") { Store.reelsAllow = v; render() }
+            else { Store.reelsAllow = v; render() }
+        })
+        add(sectionTitle("Today"))
+        add(paragraph("${Stats.shortVideosToday(Feed.SHORTS)} Shorts · ${Stats.shortVideosToday(Feed.REELS)} Reels", 16f, P.text))
+        add(sectionTitle("What it can and can't see"))
+        add(paragraph("Android tells it only when something scrolls inside YouTube or Instagram. It looks at the names of the view that scrolled and the views around it (like “reel_recycler”), to tell a swipe through Shorts from scrolling comments or the home feed. It never reads text, can't see other apps, and Intent has no internet permission.", 14.5f))
+        if (on) add(row("Turn it off in Android settings", null, null) { reelsSheet(this) })
     }
 
     private fun usageSheet() {
@@ -554,7 +604,7 @@ class SettingsActivity : BaseActivity() {
             add(dim)
         }
         add(toggleRow("Status bar on the home screen", "Off for a calmer screen. Swipe down still opens notifications.", Store.statusBar) { Store.statusBar = it })
-        add(toggleRow("A quote a day", "One line worth stopping for, on the home screen. Tap it for another.", Store.showQuote) { Store.showQuote = it })
+        add(toggleRow("Quotes on the home screen", "A line worth stopping for, new every 30 seconds. Tap it for another.", Store.showQuote) { Store.showQuote = it })
         add(sectionTitle("Theme"))
         val themes = listOf("system" to "Follow system", "dark" to "Dark", "light" to "Light")
         val tf = Flow(this).apply { setPadding(dp(24), dp(4), dp(24), dp(10)) }
@@ -637,6 +687,19 @@ class SettingsActivity : BaseActivity() {
 }
 
 /** Focus Guard explanation with Android's "restricted settings" help for apps installed from a file. */
+fun reelsSheet(a: BaseActivity) {
+    val s = Sheet(a, "Shorts & Reels guard", "Steps in when you start swiping through YouTube Shorts or Instagram Reels, and counts them.")
+    s.add(a.text("What it uses: Android's accessibility service, told only about scrolling inside YouTube and Instagram. It looks at view names, like “reel_recycler”, never at text.\n\nWhat it can't do: read your messages or anything you type, see other apps, or go online. Intent has no internet permission.", 15f, P.text2).apply { setLineSpacing(0f, 1.25f) }, 24)
+    s.add(a.button("Open accessibility settings", Kind.PRIMARY) { s.dismiss(); Launch.accessibilitySettings(a) })
+    s.add(a.text("In the list, choose “Intent · Shorts & Reels” and turn it on.\n\nIf Android says the setting is restricted (it does this for apps installed from a file): open Intent's App info, tap ⋮ at the top right, choose “Allow restricted settings”, then try again.", 14f, P.text3).apply { setLineSpacing(0f, 1.25f) }, 24)
+    s.add(a.button("Open Intent's App info", Kind.PLAIN) { Launch.ownAppInfo(a) })
+    if (Launch.isXiaomi) {
+        s.add(a.text("On Xiaomi, Redmi and POCO phones, also allow “Display pop-up windows while running in the background” in Intent's permissions, or the pause can't appear over YouTube or Instagram.", 14f, P.text3).apply { setLineSpacing(0f, 1.25f) }, 24)
+        s.add(a.button("Open Xiaomi permissions", Kind.QUIET) { Launch.xiaomiPermissions(a) })
+    }
+    s.show()
+}
+
 fun guardSheet(a: BaseActivity) {
     val s = Sheet(a, "Focus Guard", "Lets Intent show your pause even when a mindful app is opened from a notification or the recents screen, and end the sessions you choose on time.")
     s.add(a.text("What it uses: Android's accessibility service, only to learn which app is in front (its package name).\n\nWhat it can't do: read your screen, messages or passwords, see notifications, or go online. Intent has no internet permission.", 15f, P.text2).apply { setLineSpacing(0f, 1.25f) }, 24)

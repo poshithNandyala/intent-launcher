@@ -184,6 +184,26 @@ record basic-on
 swipe 50 80 50 25
 record basic-swipe-up
 
+# Shorts and Reels: the Short you open plays; the first swipe to another one gets the pause.
+# Focus Guard is off for this part, so the Short opens straight from its link.
+if adb shell pm list packages | grep -q "package:com.google.android.youtube"; then
+    adb shell settings put secure enabled_accessibility_services $PKG/$PKG.guard.ReelsGuardService
+    adb shell settings put secure accessibility_enabled 1
+    sleep 3
+    adb shell am start -a android.intent.action.VIEW -d "https://www.youtube.com/shorts/j7EwauEtGgs" com.google.android.youtube > /dev/null 2>&1
+    sleep 12
+    # The emulator's YouTube is old and may ask to update first: answer that.
+    mapfile -t pts < <(python3 scripts/ui.py coords "No thanks" "Not now" "Later" "Dismiss" "Skip")
+    for p in "${pts[@]}"; do read -r x y <<< "$p"; if [ "$x" -gt 0 ]; then adb shell input tap "$x" "$y"; break; fi; done
+    record shorts-open
+    sleep 5 # the guard comes back after the screen read
+    swipe 50 72 50 22
+    snap shorts-first-swipe    # expected: ReelsActivity in front
+    record shorts-pause
+    tap "Leave Shorts"
+    snap shorts-left
+fi
+
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1
 if crashed; then echo "CRASH:"; cat "$OUT/crash.txt"; fi
 

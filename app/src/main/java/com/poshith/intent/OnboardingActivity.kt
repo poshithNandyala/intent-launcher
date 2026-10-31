@@ -265,6 +265,8 @@ class OnboardingActivity : BaseActivity() {
             Launch.isDefaultHome(this), "Set as home", { Launch.requestHome(this) }, required = true)
         card("Turn on Focus Guard", "Pauses mindful apps even when you open them from a notification, and ends sessions on time. It sees only which app is in front, never your screen.",
             Launch.isGuardOn(this), "Turn on", { guardSheet(this) })
+        card("Pause the Shorts and Reels swipe", "The one you open plays. The first swipe to another gets a pause, with today's count and a big button to close the app. It looks only at YouTube and Instagram, never at text.",
+            com.poshith.intent.guard.ReelsGuardService.isOn(this), "Turn on", { reelsSheet(this) })
         card("Allow usage access", "Shows honest numbers, like today's unlocks and minutes in mindful apps, computed on the phone.",
             Usage.hasAccess(this), "Allow", { Launch.usageSettings(this) })
         if (Build.VERSION.SDK_INT >= 33) card("Allow reminders", "Only to say “time's up” when Focus Guard is off.",
