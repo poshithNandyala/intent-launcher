@@ -81,6 +81,8 @@ The first run downloads the tools from GitHub into `.tools/`: the Kotlin compile
 
 Prefer Android Studio? Open the folder. The Gradle files build the same sources (`./gradlew assembleDebug`).
 
+**Releasing:** raise `VERSION_CODE` and `VERSION_NAME` in `build.sh` and `app/build.gradle.kts`, then push a tag such as `v1.0.1`. CI publishes the APK to Releases when the repository has two secrets: `INTENT_KEYSTORE_B64` (the keystore file, base64) and `INTENT_KEY_PASS`. Without them it builds but never publishes, because an APK signed with another key can't update the installed app.
+
 The app uses only the Android framework (no AndroidX, no libraries), which keeps it tiny and fast.
 
 | Path | What's there |
