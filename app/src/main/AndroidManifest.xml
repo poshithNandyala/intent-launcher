@@ -13,6 +13,9 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Lets the long-press menu offer "Uninstall". Android still asks you to confirm. -->
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- Optional, granted by you in Settings: during a real break, silence everything except calls
+         and alarms, then put Do Not Disturb back exactly as it was. -->
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <!-- Only used to open your alarm list when you tap the clock. -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
@@ -130,6 +133,10 @@
 
         <receiver
             android:name=".guard.ReminderReceiver"
+            android:exported="false" />
+
+        <receiver
+            android:name=".guard.BreakReceiver"
             android:exported="false" />
     </application>
 </manifest>

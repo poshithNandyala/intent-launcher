@@ -55,5 +55,6 @@ class IntentApp : Application() {
             addAction(Intent.ACTION_MANAGED_PROFILE_UNLOCKED)
         })
         Apps.refresh(this)
+        com.poshith.intent.guard.Break.checkEnded(this)
     }
 }

@@ -43,6 +43,17 @@ def find(label):
 
 def main():
     cmd = sys.argv[1]
+    if cmd == "coords":  # one dump, several labels: "x y" per label (raw taps later don't need uiautomator)
+        found = {}
+        for n in nodes():
+            t = n.get("text") or n.get("content-desc") or ""
+            for label in sys.argv[2:]:
+                if label not in found and (t == label or t.startswith(label)):
+                    found[label] = center(n)
+        for label in sys.argv[2:]:
+            x, y = found.get(label, (-1, -1))
+            print(x, y)
+        return 0
     if cmd == "texts":
         for n in nodes():
             t = n.get("text") or n.get("content-desc")

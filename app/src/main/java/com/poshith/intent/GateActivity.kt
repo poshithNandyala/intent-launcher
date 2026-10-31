@@ -75,6 +75,7 @@ class GateActivity : BaseActivity() {
 
     private var minutes = Rule.DEFAULT_SESSION_MIN
     private var purpose: Purpose? = null
+    private var scroll: android.widget.ScrollView? = null
     private var feeling: Feeling? = null
     private var pauseDone = false
     private var openBtn: TextView? = null
@@ -124,7 +125,9 @@ class GateActivity : BaseActivity() {
         // Scrolling content on top, the exit pinned at the bottom: "Not now" is always visible.
         val root = vbox()
         val col = vbox(Gravity.CENTER_HORIZONTAL)
-        root.addView(scroller(col), lp(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        val sc = scroller(col)
+        scroll = sc
+        root.addView(sc, lp(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         bar = vbox()
         root.addView(bar, lp())
         host.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -173,7 +176,6 @@ class GateActivity : BaseActivity() {
         val phase = text("Breathe in", 16f, P.text2).apply { gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) }
         col.addView(phase, lp())
         breath.onPhase = { inhale -> phase.text = if (inhale) "Breathe in" else "Breathe out" }
-        breath.onDone = { pauseDone = true; phase.text = "Ready when you are"; refreshOpen() }
         breath.start(d.pauseMs)
 
         // How are you feeling? (affect labeling + Dr. Yousef's "cognitive pause")
@@ -196,8 +198,11 @@ class GateActivity : BaseActivity() {
             col.addView(nudgeAction, lp())
         }
 
-        // What's it for?
-        question(col, "What's it for?")
+        // After the breath: what it's for and for how long. Hidden until then, so the first thing
+        // you see is one calm circle, not a form.
+        val after = vbox(Gravity.CENTER_HORIZONTAL).apply { visibility = View.GONE }
+        col.addView(after, lp())
+        question(after, "What's it for?")
         val pFlow = Flow(this, centered = true)
         val pChips = ArrayList<Chip>()
         for (p in Purpose.values()) {
@@ -205,10 +210,10 @@ class GateActivity : BaseActivity() {
             c.setOnClickListener { purpose = p; pChips.forEach { x -> x.on = x === c }; refreshOpen() }
             pChips += c; pFlow.addView(c)
         }
-        col.addView(pFlow, lp())
+        after.addView(pFlow, lp())
 
         // For how long?
-        question(col, "For how long?")
+        question(after, "For how long?")
         val mFlow = Flow(this, centered = true)
         val mChips = ArrayList<Chip>()
         val choices = Rule.SESSION_CHOICES.filter { it <= 15 }.toMutableList()
@@ -219,17 +224,35 @@ class GateActivity : BaseActivity() {
             c.setOnClickListener { minutes = m; mChips.forEach { x -> x.on = x === c }; refreshOpen() }
             mChips += c; mFlow.addView(c)
         }
-        col.addView(mFlow, lp())
+        after.addView(mFlow, lp())
 
         val plan = Store.urgePlan
-        if (plan.isNotBlank()) line(col, "Your plan: when I feel the pull, I'll $plan.", P.text3, 14f, 24)
-        else if (Store.oneThing.isNotBlank()) line(col, "Your one thing today: ${Store.oneThing}", P.text3, 14f, 24)
+        if (plan.isNotBlank()) line(after, "Your plan: when I feel the pull, I'll $plan.", P.text3, 14f, 24)
+        else if (Store.oneThing.isNotBlank()) line(after, "Your one thing today: ${Store.oneThing}", P.text3, 14f, 24)
 
         bar.addView(button("Not now", Kind.PRIMARY) { notNow() }, lp())
-        val open = button("", Kind.OUTLINE) { proceed(minutes, purpose?.label ?: "") }
+        val open = button("", Kind.OUTLINE) { proceed(minutes, purpose?.label ?: "") }.apply { visibility = View.GONE }
         openBtn = open
         bar.addView(open, lp().apply { topMargin = dp(8) })
         refreshOpen()
+
+        breath.onDone = {
+            pauseDone = true
+            phase.text = "Ready when you are"
+            reveal(after)
+            reveal(open)
+            refreshOpen()
+            after.post { scroll?.smoothScrollTo(0, after.top - dp(24)) }
+        }
+    }
+
+    /** Fades a part of the pause screen in, rising a little: calm, never a jump. */
+    private fun reveal(v: View) {
+        v.visibility = View.VISIBLE
+        if (!animationsOn()) return
+        v.alpha = 0f
+        v.translationY = dp(14).toFloat()
+        v.animate().alpha(1f).translationY(0f).setDuration(420).setInterpolator(android.view.animation.DecelerateInterpolator(2f)).start()
     }
 
     private fun showNudge(f: Feeling, nudge: TextView, actions: LinearLayout) {
@@ -282,9 +305,9 @@ class GateActivity : BaseActivity() {
                 actions(col, "Back to focus", HoldButton(this, "Hold to end focus", 3000) { Store.focusUntil = 0; build() })
             }
             BlockReason.BREAK -> {
-                title(col, "BREAK", "You're on a break")
-                line(col, "Until $until. Step away from the screen: a real break is one without a feed.", P.text2, 16f, 14)
-                actions(col, "Back to my break", HoldButton(this, "Hold to end the break", 3000) { Store.focusUntil = 0; build() })
+                title(col, "REAL BREAK", "Not now")
+                line(col, "You're on a break until $until. Only calls get through: everything else waits for you.", P.text2, 16f, 14)
+                actions(col, "Back to my break", HoldButton(this, "Hold to end the break", 3000) { com.poshith.intent.guard.Break.end(this); build() })
             }
             BlockReason.BASIC -> {
                 title(col, "BASIC PHONE", "$label is off")

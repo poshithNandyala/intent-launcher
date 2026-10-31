@@ -25,6 +25,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextClock
 import android.widget.TextView
+import com.poshith.intent.core.Catalog
 import com.poshith.intent.core.Decision
 import com.poshith.intent.core.Mode
 import com.poshith.intent.data.AppEntry
@@ -32,9 +33,12 @@ import com.poshith.intent.data.Apps
 import com.poshith.intent.data.Stats
 import com.poshith.intent.data.Store
 import com.poshith.intent.data.Usage
+import com.poshith.intent.guard.Break
+import com.poshith.intent.guard.Dnd
 import com.poshith.intent.guard.FocusGuardService
 import com.poshith.intent.guard.Launch
 import com.poshith.intent.ui.BaseActivity
+import com.poshith.intent.ui.BreakScreen
 import com.poshith.intent.ui.DARK
 import com.poshith.intent.ui.LIGHT
 import com.poshith.intent.ui.Palette
@@ -65,6 +69,7 @@ import com.poshith.intent.ui.space
 import com.poshith.intent.ui.text
 import com.poshith.intent.ui.thud
 import com.poshith.intent.ui.tick
+import com.poshith.intent.ui.toggleRow
 import com.poshith.intent.ui.vbox
 import com.poshith.intent.ui.vflex
 import java.util.Date
@@ -86,6 +91,8 @@ class HomeActivity : BaseActivity() {
     private lateinit var bottom: LinearLayout
     private var midScroll: android.widget.ScrollView? = null
     private var ink: Palette? = null
+    /** The real-break screen, shown instead of the home screen while a break runs. */
+    private var breakScreen: BreakScreen? = null
     private var library: Library? = null
     private var mind: MindPanel? = null
 
@@ -110,6 +117,7 @@ class HomeActivity : BaseActivity() {
     }
 
     companion object {
+        private const val AUTO_LOCK_MS = 15_000L
         private val REFRESH_KEYS = setOf("home", "labels", "rules", "one_thing", "focus_until", "focus_kind", "wd_on",
             "wd_start", "wd_end", "theme", "font", "align", "text_scale", "show_date", "show_stats", "show_one_thing",
             "morning_until", "hidden")
@@ -132,7 +140,9 @@ class HomeActivity : BaseActivity() {
         super.onResume()
         if (recreating) return // the theme changed in Settings: BaseActivity is redrawing this screen
         resumed = true
+        Break.checkEnded(this)
         if (layoutSig != signature()) buildHome()
+        breakScreen?.let { it.start(); return }
         Store.noteUnlock()
         refresh()
         IntentApp.onUnlock(unlockListener)
@@ -144,6 +154,8 @@ class HomeActivity : BaseActivity() {
     override fun onPause() {
         super.onPause()
         resumed = false
+        cancelAutoLock()
+        breakScreen?.stop()
         IntentApp.removeUnlock(unlockListener)
         ui.removeCallbacks(ticker)
     }
@@ -197,9 +209,17 @@ class HomeActivity : BaseActivity() {
         if (ink().dark) intArrayOf(0x59000000, 0, 0x59000000) else intArrayOf(0x66FFFFFF, 0, 0x66FFFFFF))
 
     /** On your wallpaper the window is clear (the dimming, if any, is drawn once, by the screen itself). */
-    override fun windowColor(): Int = if (Store.wallpaper) Color.TRANSPARENT else P.bg
-    private fun screenColor(): Int = if (Store.wallpaper) Color.argb(Store.wallpaperDim * 255 / 100, 0, 0, 0) else P.bg
-    override fun barsOnDark(): Boolean = ink().dark
+    override fun windowColor(): Int = when {
+        Store.breakActive() -> BreakScreen.BG
+        Store.wallpaper -> Color.TRANSPARENT
+        else -> P.bg
+    }
+    private fun screenColor(): Int = when {
+        Store.breakActive() -> BreakScreen.BG
+        Store.wallpaper -> Color.argb(Store.wallpaperDim * 255 / 100, 0, 0, 0)
+        else -> P.bg
+    }
+    override fun barsOnDark(): Boolean = Store.breakActive() || ink().dark
 
     /** A tight shadow (like icon labels on Android's own home screen) keeps each letter's edge visible
      *  on any wallpaper, without a smudge behind the line. */
@@ -210,7 +230,8 @@ class HomeActivity : BaseActivity() {
 
     private fun applyWindow() {
         val flag = WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER
-        if (Store.wallpaper) window.addFlags(flag) else window.clearFlags(flag)
+        // No wallpaper during a real break: just the timer.
+        if (Store.wallpaper && !Store.breakActive()) window.addFlags(flag) else window.clearFlags(flag)
         Theme.apply(this)
         host.setBackgroundColor(screenColor())
         applyStatusBar()
@@ -218,9 +239,10 @@ class HomeActivity : BaseActivity() {
 
     /** Hide the status bar on the home screen if you chose to (swipe down from the top still shows it). */
     private fun applyStatusBar() {
+        val show = Store.statusBar && !Store.breakActive()
         if (Build.VERSION.SDK_INT >= 30) {
             val c = window.decorView.windowInsetsController ?: return
-            if (Store.statusBar) c.show(WindowInsets.Type.statusBars())
+            if (show) c.show(WindowInsets.Type.statusBars())
             else {
                 c.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
                 c.hide(WindowInsets.Type.statusBars())
@@ -228,13 +250,23 @@ class HomeActivity : BaseActivity() {
         } else {
             @Suppress("DEPRECATION")
             val f = WindowManager.LayoutParams.FLAG_FULLSCREEN
-            if (Store.statusBar) window.clearFlags(f) else window.addFlags(f)
+            if (show) window.clearFlags(f) else window.addFlags(f)
         }
     }
 
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
         applyStatusBar()
+    }
+
+    /** A live wallpaper reacts to taps on empty space, as it does on Android's own home screen. */
+    private fun wallpaperTap(e: MotionEvent) {
+        if (!Store.wallpaper || breakScreen != null) return
+        val token = window.decorView.windowToken ?: return
+        try {
+            android.app.WallpaperManager.getInstance(this)
+                .sendWallpaperCommand(token, android.app.WallpaperManager.COMMAND_TAP, e.rawX.toInt(), e.rawY.toInt(), 0, null)
+        } catch (_: Exception) {}
     }
 
     /** A short line under the date ("Basic phone is on…"), gone after a few seconds. */
@@ -256,7 +288,7 @@ class HomeActivity : BaseActivity() {
     }
 
     private fun signature() = "${Store.font}|${Store.align}|${Store.textScale}|${Store.showDate}|${Store.wallpaper}|" +
-        "${Store.wallpaper && Wallpaper.isLight(this)}|${Store.wallpaperDim}|${Store.statusBar}"
+        "${Store.wallpaper && Wallpaper.isLight(this)}|${Store.wallpaperDim}|${Store.statusBar}|${Store.breakActive()}"
 
     private fun buildHome() {
         layoutSig = signature()
@@ -264,7 +296,10 @@ class HomeActivity : BaseActivity() {
         library = null
         mind = null
         ink = null
+        breakScreen?.dispose()
+        breakScreen = null
         applyWindow()
+        if (Store.breakActive()) { buildBreak(); return }
         val k = ink()
         host.removeAllViews()
         page = vbox(alignGravity())
@@ -302,7 +337,12 @@ class HomeActivity : BaseActivity() {
             }.legible()
             page.addView(date, lp().apply { gravity = g })
         }
-        statsLine = text("", scale(13.5f), k.text3).apply { gravity = g; setPadding(0, dp(10), 0, 0); visibility = View.GONE }.legible()
+        statsLine = text("", scale(13.5f), k.text3).apply {
+            gravity = g; setPadding(0, dp(10), 0, dp(4)); visibility = View.GONE
+            setLineSpacing(0f, 1.25f)
+            background = ripple(null, dp(8).toFloat())
+            setOnClickListener { it.tick(); if (breakScreen == null) mindPanel().open() }
+        }.legible()
         page.addView(statsLine, lp())
 
         // Everything below the clock sits at the bottom, near your thumb. It only scrolls if it can't
@@ -361,6 +401,25 @@ class HomeActivity : BaseActivity() {
         page.setOnTouchListener { _, e -> taps.onTouchEvent(e); true }
     }
 
+    // ---------------------------------------------------------------------------------- real break
+
+    private fun buildBreak() {
+        host.removeAllViews()
+        val b = BreakScreen(this) { breakOver() }
+        breakScreen = b
+        host.addView(b.view, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+        if (resumed) b.start()
+    }
+
+    /** The timer ran out, or you held "end the break". Do Not Disturb goes back to how it was. */
+    private fun breakOver() {
+        val early = Store.breakActive()
+        Break.end(this)
+        Store.flash = if (early) "Break ended." else "Break done. Welcome back."
+        buildHome()
+        refresh()
+    }
+
     private fun bottomItem(label: String, onClick: () -> Unit): TextView = text(label, 15f, ink().text2).legible().apply {
         gravity = Gravity.CENTER
         background = ripple(null, dp(20).toFloat())
@@ -369,6 +428,8 @@ class HomeActivity : BaseActivity() {
     }
 
     private fun refresh() {
+        if (layoutSig != signature()) { buildHome(); if (resumed) breakScreen?.start() }
+        if (breakScreen != null) return
         renderApps()
         renderOneThing()
         renderStatus()
@@ -479,27 +540,47 @@ class HomeActivity : BaseActivity() {
             val usage = Usage.today(this)
             val mindful = Store.packagesWithMode(Mode.MINDFUL)
             val notNow = Stats.notNowToday()
-            val parts = ArrayList<String>()
-            if (usage != null) {
-                if (usage.unlocksKnown) parts += "${usage.unlocks} unlock${if (usage.unlocks == 1) "" else "s"}"
-                val ms = usage.msFor(mindful)
-                if (mindful.isNotEmpty()) parts += "${Usage.formatMinutes(ms)} in mindful apps"
-            }
-            if (notNow > 0) parts += "not now ×$notNow"
-            val line = parts.joinToString(" · ").replaceFirstChar { it.uppercase() }
             runOnUiThread {
-                if (isDestroyed) return@runOnUiThread
-                statsLine.text = line
-                statsLine.visibility = if (line.isBlank()) View.GONE else View.VISIBLE
+                if (isDestroyed || breakScreen != null) return@runOnUiThread
+                statsLine.text = screenTime(usage, mindful, notNow)
+                statsLine.visibility = if (statsLine.text.isBlank()) View.GONE else View.VISIBLE
             }
         }
+    }
+
+    /**
+     * Today's screen time, quietly. Time in the apps that pull you is the part that grows heavier:
+     * brighter past an hour, then warm amber with a plain comparison. Calls, maps and work time are
+     * never singled out.
+     */
+    private fun screenTime(usage: Usage.Today?, mindful: Set<String>, notNow: Int): CharSequence {
+        val k = ink()
+        if (usage == null) return if (notNow > 0) "Not now ×$notNow today" else ""
+        val total = usage.totalMs(packageName)
+        val pull = usage.msFor(mindful)
+        val out = android.text.SpannableStringBuilder("${Usage.formatMinutes(total)} on your phone today")
+        if (notNow > 0) out.append(" · not now ×$notNow")
+        if (pull >= 30 * 60_000L) {
+            val line = StringBuilder("${Usage.formatMinutes(pull)} of it in pull apps")
+            val color = when {
+                pull >= 3 * 3_600_000L -> { line.append(". Most of an evening."); k.warn }
+                pull >= 2 * 3_600_000L -> { line.append(". As long as a film."); k.warn }
+                pull >= 3_600_000L -> k.text
+                else -> k.text2
+            }
+            val start = out.length + 1
+            out.append("\n").append(line)
+            out.setSpan(android.text.style.ForegroundColorSpan(color), start, out.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            if (pull >= 2 * 3_600_000L) out.setSpan(android.text.style.RelativeSizeSpan(1.12f), start, out.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        }
+        return out
     }
 
     // ---------------------------------------------------------------------------------- check-in
 
     /** Right after you unlock: "What did you pick up your phone for?" Never blocks anything. */
     private fun maybeCheckIn() {
-        if (!Store.checkIn || !Store.onboarded || hasBackLayers()) return
+        if (!Store.checkIn || !Store.onboarded || hasBackLayers() || breakScreen != null) return
         val at = Store.lastUnlockElapsed
         if (at == 0L || at == shownCheckInFor) return
         if (SystemClock.elapsedRealtime() - at > 6_000) return
@@ -508,30 +589,98 @@ class HomeActivity : BaseActivity() {
         val g = alignGravity()
         val k = ink()
         checkIn.addView(text("What did you pick up your phone for?", scale(17f), k.text, Fonts.medium(this)).apply { gravity = g }, lp())
-        val flow = Flow(this).apply { setPadding(0, dp(10), 0, 0) }
+        val flow = Flow(this).apply { setPadding(0, dp(12), 0, 0) }
         fun chip(label: String, action: () -> Unit) = Chip(this, label, k).apply { setOnClickListener { it.tick(); action() } }
-        flow.addView(chip("A call or message") { hideCheckIn() })
-        if (!Store.basicPhone) flow.addView(chip("Something specific") { hideCheckIn(); openLibrary() })
+        flow.addView(chip("A call or message") { callOrMessage() })
+        if (!Store.basicPhone) flow.addView(chip("Something specific") { cancelAutoLock(); hideCheckIn(); openLibrary() })
         flow.addView(chip("Just checking") { justChecking() })
         checkIn.addView(flow, lp())
+        if (Store.lockIfNoAnswer && FocusGuardService.running) startAutoLock(at)
+        else ui.postDelayed({ if (shownCheckInFor == at && autoLock == null) hideCheckIn() }, 12_000)
         showCheckIn()
-        ui.postDelayed({ if (shownCheckInFor == at) hideCheckIn() }, 12_000)
+    }
+
+    // No answer, no reason: the phone locks again. A thin line shows the time left; any touch stops it.
+    private var autoLock: Runnable? = null
+
+    private fun startAutoLock(at: Long) {
+        val k = ink()
+        val g = alignGravity()
+        val caption = text("", 13f, k.text3).apply { gravity = g; setPadding(0, dp(14), 0, dp(8)) }
+        val track = FrameLayout(this)
+        val line = View(this).apply { background = rounded(k.accent, dp(1).toFloat()); pivotX = 0f }
+        track.addView(line, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(2)))
+        checkIn.addView(caption, lp())
+        checkIn.addView(track, lp())
+        val total = AUTO_LOCK_MS
+        val startAt = SystemClock.uptimeMillis()
+        val r = object : Runnable {
+            override fun run() {
+                if (autoLock !== this || shownCheckInFor != at) return
+                val left = total - (SystemClock.uptimeMillis() - startAt)
+                if (left <= 0) {
+                    autoLock = null
+                    hideCheckIn()
+                    FocusGuardService.lockScreen()
+                    return
+                }
+                line.scaleX = left / total.toFloat()
+                caption.text = "No answer locks the phone in ${(left + 999) / 1000} s"
+                ui.postDelayed(this, 50)
+            }
+        }
+        autoLock = r
+        ui.post(r)
+    }
+
+    private fun cancelAutoLock() {
+        val r = autoLock ?: return
+        autoLock = null
+        ui.removeCallbacks(r)
+        // The countdown is gone; the question stays until you answer or leave.
+        if (::checkIn.isInitialized && checkIn.childCount >= 4) {
+            checkIn.removeViewAt(checkIn.childCount - 1)
+            checkIn.removeViewAt(checkIn.childCount - 1)
+        }
+    }
+
+    /** "A call or message": the ways to reach someone, right here. */
+    private fun callOrMessage() {
+        cancelAutoLock()
+        val k = ink()
+        val g = alignGravity()
+        checkIn.removeAllViews()
+        checkIn.addView(text("Who do you want to reach?", scale(17f), k.text, Fonts.medium(this)).apply { gravity = g }, lp())
+        val flow = Flow(this).apply { setPadding(0, dp(12), 0, 0) }
+        fun chip(label: String, action: () -> Unit) = Chip(this, label, k).apply { setOnClickListener { it.tick(); hideCheckIn(); action() } }
+        flow.addView(chip("Phone") { Launch.dialer(this) })
+        val sms = Launch.resolve(this, Intent(Intent.ACTION_SENDTO, android.net.Uri.parse("smsto:")))
+        if (sms != null) flow.addView(chip(Apps.labelFor(this, sms)) { Launch.openPackage(this, sms) })
+        for (wa in Catalog.WHATSAPP) Apps.byPkg(wa)?.let { app -> flow.addView(chip(app.label) { Launch.open(this, app, null) }) }
+        checkIn.addView(flow, lp())
     }
 
     private fun justChecking() {
+        cancelAutoLock()
         Stats.justChecking()
-        checkIn.removeAllViews()
+        val k = ink()
         val g = alignGravity()
-        checkIn.addView(text("Nothing needs you right now.", scale(17f), ink().text, Fonts.medium(this)).apply { gravity = g }, lp())
-        checkIn.addView(text("Noticing the habit is how it changes.", scale(15f), ink().text2).apply { gravity = g; setPadding(0, dp(4), 0, dp(10)) }, lp())
-        val row = hbox()
-        val lock = button(if (FocusGuardService.running) "Lock the phone" else "Put it down", Kind.QUIET) {
-            hideCheckIn()
-            if (!FocusGuardService.lockScreen()) Store.flash = "Good call."
-            renderStats()
+        checkIn.removeAllViews()
+        checkIn.addView(text("Nothing needs you right now.", scale(17f), k.text, Fonts.medium(this)).apply { gravity = g }, lp())
+        if (FocusGuardService.running) {
+            // Say it, then do it: the phone locks on its own.
+            checkIn.addView(text("Locking the phone…", scale(15f), k.text2).apply { gravity = g; setPadding(0, dp(6), 0, 0) }, lp())
+            val at = shownCheckInFor
+            ui.postDelayed({ if (shownCheckInFor == at) { hideCheckIn(); FocusGuardService.lockScreen() } }, 1_300)
+        } else {
+            checkIn.addView(text("Put it down. Turn on Focus Guard and Intent locks it for you.", scale(15f), k.text2).apply {
+                gravity = g; setLineSpacing(0f, 1.2f); setPadding(0, dp(6), 0, dp(10))
+            }, lp())
+            checkIn.addView(Chip(this, "Turn on Focus Guard", k).apply { setOnClickListener { hideCheckIn(); guardSheet(this@HomeActivity) } },
+                lp(ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = g })
+            val at = shownCheckInFor
+            ui.postDelayed({ if (shownCheckInFor == at) hideCheckIn() }, 8_000)
         }
-        row.addView(lock, lp(ViewGroup.LayoutParams.WRAP_CONTENT))
-        checkIn.addView(row, lp().apply { gravity = g })
     }
 
     private fun showCheckIn() {
@@ -564,6 +713,7 @@ class HomeActivity : BaseActivity() {
 
     private val tapListener = object : GestureDetector.SimpleOnGestureListener() {
         override fun onDown(e: MotionEvent): Boolean = true
+        override fun onSingleTapUp(e: MotionEvent): Boolean { wallpaperTap(e); return false }
         override fun onDoubleTap(e: MotionEvent): Boolean {
             if (!Store.doubleTapLock || hasBackLayers()) return false
             if (!FocusGuardService.lockScreen()) {
@@ -579,6 +729,8 @@ class HomeActivity : BaseActivity() {
     }
 
     override fun dispatchTouchEvent(ev: MotionEvent): Boolean {
+        if (breakScreen != null) return super.dispatchTouchEvent(ev) // a break: no swipes, no menus
+        if (ev.actionMasked == MotionEvent.ACTION_DOWN) cancelAutoLock()
         val panelOnly = layerIsPanel()
         if (!hasBackLayers() || panelOnly) {
             flingFired = false
@@ -770,45 +922,60 @@ class HomeActivity : BaseActivity() {
     fun appMenu(app: AppEntry) {
         val rule = Store.rule(app.pkg)
         val prot = Launch.isProtected(this, app.pkg)
-        val sub = if (prot) "Always available: needed for calls, payments or system tasks."
-        else when (rule.mode) {
-            Mode.ESSENTIAL -> "Essential: opens instantly, even during focus."
-            Mode.NORMAL -> "Opens instantly. Paused during focus."
-            Mode.MINDFUL -> "Mindful: ${rule.pauseSec} s pause, ${rule.sessionMin} min sessions."
-            Mode.BATCHED -> "Opens only at your check-in times (${checkInText()})."
-            Mode.BLOCKED -> "Blocked."
-        }
-        val s = Sheet(this, app.label, sub)
+        val s = Sheet(this, app.label, if (prot) "Always opens: it's needed for calls, payments or the system." else modeLine(rule))
+
+        // Quick actions in one row: nothing hidden below the fold, no keyboard.
+        val quick = Flow(this)
         val home = Store.homeKeys
-        if (app.key in home) s.item("Remove from home") { Store.homeKeys = home - app.key }
-        else if (home.size < Store.MAX_HOME) s.item("Add to home", "${home.size} of ${Store.MAX_HOME} · fewer is calmer") { Store.homeKeys = home + app.key }
-        s.item("Rename") { renameSheet(app) }
-        if (!prot) {
-            val options = listOf(
-                Mode.ESSENTIAL to "Essential · never paused",
-                Mode.NORMAL to "Normal",
-                Mode.MINDFUL to "Mindful · pause before opening",
-                Mode.BATCHED to "Check-in times · ${checkInText()}",
-                Mode.BLOCKED to "Blocked",
-            )
-            for ((m, label) in options) {
-                val current = m == rule.mode
-                s.item(if (current) "✓  $label" else "    $label", color = if (current) P.accent else P.text) {
-                    if (current) return@item
-                    if (m.isLooserThan(rule.mode)) {
-                        confirmLoosen("Make ${app.label} easier to open?", "From ${Launch.modeLabel(rule.mode)} to ${Launch.modeLabel(m)}.") {
-                            Store.setMode(app.pkg, m)
-                        }
-                    } else Store.setMode(app.pkg, m)
+        val onHome = app.key in home
+        quick.addView(Chip(this, if (onHome) "Remove from home" else "Add to home").apply {
+            setOnClickListener {
+                it.tick(); s.dismiss()
+                when {
+                    onHome -> Store.homeKeys = home - app.key
+                    home.size < Store.MAX_HOME -> Store.homeKeys = home + app.key
+                    else -> Launch.toast(this@HomeActivity, "Your home screen holds ${Store.MAX_HOME} apps. Fewer is calmer.")
                 }
             }
-        }
+        })
+        quick.addView(Chip(this, "Rename").apply { setOnClickListener { it.tick(); s.dismiss(); renameSheet(app) } })
         val hidden = Store.hidden
-        if (app.key in hidden) s.item("Show in search") { Store.hidden = hidden - app.key }
-        else s.item("Hide from search", "Out of sight, out of reach") { Store.hidden = hidden + app.key }
+        quick.addView(Chip(this, if (app.key in hidden) "Show in search" else "Hide from search").apply {
+            setOnClickListener { it.tick(); s.dismiss(); Store.hidden = if (app.key in hidden) hidden - app.key else hidden + app.key }
+        })
+        s.add(quick)
+
+        // How it opens: one choice, the current one marked.
+        if (!prot) {
+            s.add(text("HOW IT OPENS", 12f, P.text3, Fonts.medium(this)).apply { letterSpacing = 0.1f; setPadding(0, dp(14), 0, dp(2)) })
+            val modes = Flow(this)
+            for ((m, label) in listOf(Mode.ESSENTIAL to "Essential", Mode.NORMAL to "Normal", Mode.MINDFUL to "Mindful",
+                Mode.BATCHED to "Check-in", Mode.BLOCKED to "Blocked")) {
+                val c = Chip(this, label); c.on = m == rule.mode
+                c.setOnClickListener {
+                    it.tick()
+                    if (m == rule.mode) return@setOnClickListener
+                    s.dismiss()
+                    if (m.isLooserThan(rule.mode)) {
+                        confirmLoosen("Make ${app.label} easier to open?", "From ${Launch.modeLabel(rule.mode)} to ${Launch.modeLabel(m)}.") { Store.setMode(app.pkg, m) }
+                    } else Store.setMode(app.pkg, m)
+                }
+                modes.addView(c)
+            }
+            s.add(modes)
+        }
+        s.add(space(6))
         s.item("App info") { Launch.appInfo(this, app) }
         s.item("Uninstall", color = P.warn) { Launch.uninstall(this, app) }
         s.show()
+    }
+
+    private fun modeLine(rule: com.poshith.intent.core.Rule): String = when (rule.mode) {
+        Mode.ESSENTIAL -> "Essential: opens instantly, even during focus."
+        Mode.NORMAL -> "Opens instantly. Waits during focus and breaks."
+        Mode.MINDFUL -> "Mindful: a ${rule.pauseSec} s pause first, then the minutes you choose."
+        Mode.BATCHED -> "Opens only at your check-in times (${checkInText()})."
+        Mode.BLOCKED -> "Blocked. You can still unlock it once by typing a phrase."
     }
 
     private fun checkInText(): String {
@@ -885,45 +1052,95 @@ class HomeActivity : BaseActivity() {
             val brk = Store.focusIsBreak
             val s = Sheet(this, if (brk) "On a break" else "Focusing", if (brk) "Until $until. Away from screens is the whole point." else "Until $until. Only your essentials open. Calls always ring.")
             s.add(HoldButton(this, if (brk) "Hold to end the break" else "Hold to end focus early", 3000) {
-                Store.focusUntil = 0; s.dismiss(); renderStatus()
+                if (brk) { s.dismiss(); breakOver() } else { Store.focusUntil = 0; s.dismiss(); renderStatus() }
             })
             s.show()
             return
         }
-        val s = Sheet(this, "Focus or a real break", "Either way, only your essentials open until it ends. Calls always ring through.")
+        val s = Sheet(this, "Make some quiet", null)
+        fun render(tab: String) {
+            s.content.removeAllViews()
+            // Three ways, one at a time: nothing hidden below the fold.
+            val tabs = Flow(this)
+            for ((key, label) in listOf("break" to "Real break", "focus" to "Focus", "basic" to "Basic phone")) {
+                val c = Chip(this, label); c.on = key == tab
+                c.setOnClickListener { it.tick(); if (key != tab) render(key) }
+                tabs.addView(c)
+            }
+            s.add(tabs)
+            when (tab) {
+                "break" -> breakTab(s)
+                "focus" -> focusTab(s)
+                else -> basicTab(s)
+            }
+        }
+        render("break")
+        s.show()
+    }
+
+    private fun breakTab(s: Sheet) {
+        s.add(paragraph("Only calls ring through. Every other app waits, notifications too, and your screen shows just a timer. Away from screens is the point.", 15f, P.text2), 0)
+        var breakMin = Store.breakLength
+        val presets = intArrayOf(15, 30, 45, 60, 90)
+        val bf = Flow(this)
+        val bChips = ArrayList<Chip>()
+        val custom = field("How many minutes?", if (breakMin in presets) "" else breakMin.toString(), caps = false).apply {
+            inputType = android.text.InputType.TYPE_CLASS_NUMBER
+            visibility = if (breakMin in presets) View.GONE else View.VISIBLE
+        }
+        custom.onText { t -> t.toIntOrNull()?.let { breakMin = it.coerceIn(1, Break.MAX_MIN) } }
+        for (m in presets) {
+            val c = Chip(this, if (m < 60) "$m min" else if (m == 60) "1 hour" else "1 h 30"); c.on = m == breakMin
+            c.setOnClickListener {
+                it.tick(); breakMin = m; bChips.forEach { x -> x.on = x === c }
+                custom.visibility = View.GONE; hideKeyboard(this, custom)
+            }
+            bChips += c; bf.addView(c)
+        }
+        val cc = Chip(this, "Your time"); cc.on = breakMin !in presets
+        cc.setOnClickListener {
+            it.tick(); bChips.forEach { x -> x.on = x === cc }
+            custom.visibility = View.VISIBLE; custom.requestFocus(); showKeyboard(custom)
+        }
+        bChips += cc; bf.addView(cc)
+        s.add(bf)
+        s.add(custom)
+        if (Catalog.WHATSAPP.any { Apps.isInstalled(it) }) {
+            s.content.addView(toggleRow("Keep WhatsApp", "Open it during the break. Its calls ring either way.", Store.breakKeepWhatsapp) { Store.breakKeepWhatsapp = it }, lp())
+        }
+        if (!Dnd.hasAccess(this)) {
+            s.item("Silence notifications too", "Allow Intent “Do Not Disturb access”. Calls and alarms still ring.", P.accent, keepOpen = true) { Dnd.requestAccess(this) }
+        }
+        s.add(button("Start the break", Kind.PRIMARY) {
+            hideKeyboard(this, custom)
+            Break.start(this, breakMin)
+            s.dismiss()
+            buildHome()
+            if (resumed) breakScreen?.start()
+        })
+    }
+
+    private fun focusTab(s: Sheet) {
+        s.add(paragraph("Deep work: your essentials open, everything else waits. Calls always ring.", 15f, P.text2), 0)
         var focusMin = Store.focusLength
-        var breakMin = 15
-        s.add(text("Deep work", 16f, P.text, Fonts.medium(this)), 24)
         val ff = Flow(this)
         val fChips = ArrayList<Chip>()
         for (m in intArrayOf(25, 50, 90)) {
             val c = Chip(this, "$m min"); c.on = m == focusMin
-            c.setOnClickListener { focusMin = m; fChips.forEach { x -> x.on = x === c } }
+            c.setOnClickListener { it.tick(); focusMin = m; fChips.forEach { x -> x.on = x === c } }
             fChips += c; ff.addView(c)
         }
         s.add(ff)
         s.add(button("Start focus", Kind.PRIMARY) { startFocus("focus", focusMin); s.dismiss() })
         s.add(paragraph("Best results: carry the phone to another room. Out of reach, it gets picked up far less.", 14f, P.text3), 0)
-        s.add(space(8))
-        s.add(text("A real break", 16f, P.text, Fonts.medium(this)), 24)
-        s.add(paragraph("Dr. Sahar Yousef's micro break: 10 to 20 minutes fully away from screens and work. Scrolling doesn't count.", 14f, P.text2), 0)
-        val bf = Flow(this)
-        val bChips = ArrayList<Chip>()
-        for (m in intArrayOf(10, 15, 20)) {
-            val c = Chip(this, "$m min"); c.on = m == breakMin
-            c.setOnClickListener { breakMin = m; bChips.forEach { x -> x.on = x === c } }
-            bChips += c; bf.addView(c)
-        }
-        s.add(bf)
-        s.add(button("Start a break", Kind.QUIET) { startFocus("break", breakMin); s.dismiss() })
-        s.add(space(8))
-        s.add(text("Basic phone", 16f, P.text, Fonts.medium(this)), 24)
-        s.add(paragraph("A smartphone that behaves like a simple phone: essentials only, until you turn it off. Some of the most focused people carry exactly that.", 14f, P.text2), 0)
-        s.add(button("Turn on basic phone", Kind.OUTLINE) { startFocus("basic", 0); s.dismiss() })
+    }
+
+    private fun basicTab(s: Sheet) {
+        s.add(paragraph("A smartphone that behaves like a simple phone: only your essentials, and no search, until you turn it off.", 15f, P.text2), 0)
         val essentials = Store.packagesWithMode(Mode.ESSENTIAL).mapNotNull { Apps.byPkg(it)?.label }.sorted()
         s.add(paragraph("Always open: Phone, Messages, Clock" + (if (essentials.isEmpty()) "" else ", " + essentials.joinToString(", ")) + ".", 13.5f, P.text3), 0)
-        s.item("Choose essentials", keepOpen = false) { openSettings("essentials") }
-        s.show()
+        s.add(button("Turn on basic phone", Kind.PRIMARY) { startFocus("basic", 0); s.dismiss() })
+        s.item("Choose essentials") { openSettings("essentials") }
     }
 
     private fun startFocus(kind: String, minutes: Int) {

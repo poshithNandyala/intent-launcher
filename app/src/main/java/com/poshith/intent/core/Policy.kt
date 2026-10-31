@@ -132,8 +132,13 @@ object Policy {
 
     fun decide(rule: Rule, s: Situation): Decision {
         if (s.protectedApp) return Decision.Open
+        // A real break is stricter than focus: only calling (and what you chose to keep) opens, so
+        // even essentials wait. The caller decides what counts as "protected" during a break.
+        if (s.focusUntilWallMs > s.nowWallMs && s.focusIsBreak && !s.focusIsBasic) {
+            return Decision.Blocked(BlockReason.BREAK, s.focusUntilWallMs)
+        }
         if (rule.mode == Mode.ESSENTIAL) return Decision.Open
-        // Focus, a break and basic phone mean essentials only, even if a session was running before.
+        // Focus and basic phone mean essentials only, even if a session was running before.
         if (s.focusUntilWallMs > s.nowWallMs) {
             val why = when { s.focusIsBasic -> BlockReason.BASIC; s.focusIsBreak -> BlockReason.BREAK; else -> BlockReason.FOCUS }
             return Decision.Blocked(why, s.focusUntilWallMs)

@@ -55,7 +55,7 @@ object Launch {
             windDownStrict = Store.windDownStrict,
             opensToday = Stats.sessionsToday(pkg),
             hasActiveSession = active,
-            protectedApp = isProtected(ctx, pkg),
+            protectedApp = if (Store.breakActive(now)) breakAllowed(ctx, pkg) else isProtected(ctx, pkg),
             recentlyEnded = Store.endedRecently(pkg),
         )
         return Policy.decide(rule, s)
@@ -139,6 +139,29 @@ object Launch {
         } catch (_: Exception) {}
         return out
     }
+
+    /** During a real break: calling, the clock, keyboards and system screens, plus WhatsApp if you kept it. */
+    fun breakAllowed(ctx: Context, pkg: String): Boolean {
+        if (pkg == ctx.packageName || pkg in Catalog.BREAK_ALLOWED) return true
+        if (pkg in Catalog.WHATSAPP && Store.breakKeepWhatsapp) return true
+        val now = SystemClock.elapsedRealtime()
+        if (now - breakAt > 60_000 || breakAt == 0L) {
+            val out = HashSet<String>()
+            try { ctx.getSystemService(TelecomManager::class.java)?.defaultDialerPackage?.let { out += it } } catch (_: Exception) {}
+            try {
+                (ctx.getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).enabledInputMethodList.forEach { out += it.packageName }
+            } catch (_: Exception) {}
+            try {
+                ctx.packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), 0)
+                    .forEach { out += it.activityInfo.packageName }
+            } catch (_: Exception) {}
+            breakSystem = out
+            breakAt = now
+        }
+        return pkg in breakSystem
+    }
+    @Volatile private var breakSystem: Set<String> = emptySet()
+    @Volatile private var breakAt = 0L
 
     /** Package that handles an intent by default (null if none or only the system chooser). */
     fun resolve(ctx: Context, i: Intent): String? = try {

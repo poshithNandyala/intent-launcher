@@ -43,6 +43,42 @@ object Catalog {
     )
 
     /** Often pulled into without deciding to: feeds, short video, endless browsing. Pre-selected as "mindful". */
+    /**
+     * During a real break only these open: calling (dialer, in-call screen, contacts), the clock (an
+     * alarm must be stoppable), emergency, and the system screens needed to change settings or leave
+     * Intent. Messages, cameras and every other app wait. Keyboards are added at runtime.
+     */
+    val BREAK_ALLOWED = setOf(
+        "android",
+        "com.android.systemui",
+        "com.android.settings",
+        "com.android.settings.intelligence",
+        "com.samsung.android.settings",
+        "com.miui.securitycenter",
+        "com.android.permissioncontroller",
+        "com.google.android.permissioncontroller",
+        "com.android.packageinstaller",
+        "com.google.android.packageinstaller",
+        "com.android.phone",
+        "com.android.server.telecom",
+        "com.android.incallui",
+        "com.android.dialer",
+        "com.google.android.dialer",
+        "com.samsung.android.dialer",
+        "com.samsung.android.incallui",
+        "com.android.contacts",
+        "com.google.android.contacts",
+        "com.samsung.android.app.contacts",
+        "com.android.emergency",
+        "com.google.android.apps.safetyhub",
+        "com.android.deskclock",
+        "com.google.android.deskclock",
+        "com.sec.android.app.clockpackage",
+    )
+
+    /** WhatsApp, which you can choose to keep during a real break (its calls ring through either way). */
+    val WHATSAPP = setOf("com.whatsapp", "com.whatsapp.w4b")
+
     val PULL = linkedSetOf(
         "com.instagram.android",            // Instagram
         "com.google.android.youtube",       // YouTube

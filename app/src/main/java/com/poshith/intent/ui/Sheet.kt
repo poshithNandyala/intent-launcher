@@ -68,6 +68,8 @@ class Sheet(private val a: BaseActivity, title: String?, subtitle: String? = nul
     fun show(): Sheet {
         if (shown) return this
         shown = true
+        // A menu opened from search must not sit under the search keyboard.
+        hideKeyboard(a, a.host)
         a.host.addView(scrim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         a.pushBack(closer)
         a.onBars(barListener)
@@ -192,11 +194,17 @@ fun BaseActivity.confirmPhrase(title: String, message: String, phrase: String, c
 
 /** A button you have to hold down. Used to end a focus session early. */
 @SuppressLint("ViewConstructor", "ClickableViewAccessibility")
-class HoldButton(ctx: Context, private val label: String, private val holdMs: Long, private val onDone: () -> Unit) : TextView(ctx) {
+class HoldButton(
+    ctx: Context,
+    private val label: String,
+    private val holdMs: Long,
+    pal: Palette = P,
+    private val onDone: () -> Unit,
+) : TextView(ctx) {
     private var progress = 0f
     private var holding = false
     private var lastTick = 0L
-    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = P.accentSoft }
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = pal.accentSoft }
     private val rect = RectF()
 
     /** Timed on the real clock, not with an animator: turning animations off in Android can't skip the hold. */
@@ -228,8 +236,8 @@ class HoldButton(ctx: Context, private val label: String, private val holdMs: Lo
         gravity = Gravity.CENTER
         minHeight = ctx.dp(48)
         setPadding(ctx.dp(20), ctx.dp(10), ctx.dp(20), ctx.dp(10))
-        setTextColor(P.text)
-        background = rounded(android.graphics.Color.TRANSPARENT, ctx.dp(24).toFloat(), P.line, ctx.dp(1.2f))
+        setTextColor(pal.text)
+        background = rounded(android.graphics.Color.TRANSPARENT, ctx.dp(24).toFloat(), pal.line, ctx.dp(1.2f))
         contentDescription = "$label. Press and hold."
         setOnTouchListener { _, e ->
             when (e.actionMasked) {

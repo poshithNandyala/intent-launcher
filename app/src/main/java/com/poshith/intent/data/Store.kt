@@ -52,6 +52,8 @@ object Store {
     var showStats: Boolean get() = bool("show_stats", true); set(v) = putB("show_stats", v)
     var showOneThing: Boolean get() = bool("show_one_thing", true); set(v) = putB("show_one_thing", v)
     var checkIn: Boolean get() = bool("check_in", true); set(v) = putB("check_in", v)
+    /** If the unlock question gets no answer, lock the phone again (needs Focus Guard). */
+    var lockIfNoAnswer: Boolean get() = bool("lock_no_answer", true); set(v) = putB("lock_no_answer", v)
     var autoOpenSingle: Boolean get() = bool("auto_open_single", false); set(v) = putB("auto_open_single", v)
     var doubleTapLock: Boolean get() = bool("double_tap_lock", true); set(v) = putB("double_tap_lock", v)
     var swipeLeftKey: String get() = str("swipe_left"); set(v) = put("swipe_left", v)
@@ -167,6 +169,20 @@ object Store {
     const val UNTIL_OFF = 4_000_000_000_000L
 
     fun focusActive(now: Long = System.currentTimeMillis()) = focusUntil > now
+    fun breakActive(now: Long = System.currentTimeMillis()) = focusKind == "break" && focusActive(now)
+
+    /** Keep WhatsApp during a real break (its calls ring either way, as calls). */
+    var breakKeepWhatsapp: Boolean get() = bool("break_whatsapp", true); set(v) = putB("break_whatsapp", v)
+    /** The break length you chose last time, in minutes. */
+    var breakLength: Int get() = int("break_len", 30); set(v) = putI("break_len", v)
+
+    // ------------------------------------------------------------------ Do Not Disturb during a real break
+    /** True while Intent has Do Not Disturb on for a break, so it knows to switch it back off. */
+    var dndOurs: Boolean get() = bool("dnd_ours", false); set(v) = putB("dnd_ours", v)
+    /** What Do Not Disturb looked like before the break: filter, then policy fields. -1 = not saved. */
+    var dndBefore: List<Int>
+        get() = jsonList(str("dnd_before")).mapNotNull { it.toIntOrNull() }
+        set(v) = put("dnd_before", JSONArray(v.map { it.toString() }).toString())
 
     // ------------------------------------------------------------------ morning quiet (Yousef's 30/15 rule, Durov's quiet mornings)
     /** Minutes mindful apps rest after your first unlock of the morning. 0 = off. */

@@ -220,6 +220,7 @@ class SettingsActivity : BaseActivity() {
         add(toggleRow("Today's numbers", "Unlocks and time in mindful apps (needs usage access)", Store.showStats) { Store.showStats = it })
         add(toggleRow("Today's one thing", "One goal in view above your apps", Store.showOneThing) { Store.showOneThing = it })
         add(toggleRow("Check-in after unlocking", "“What did you pick up your phone for?” Never blocks anything.", Store.checkIn) { Store.checkIn = it })
+        add(toggleRow("Lock if I don't answer", "No choice within 15 seconds and the phone locks again. Needs Focus Guard.", Store.lockIfNoAnswer) { Store.lockIfNoAnswer = it })
         add(row("Layout and text size", null, null) { go("appearance") })
     }
 
@@ -607,6 +608,7 @@ class SettingsActivity : BaseActivity() {
         add(row("Erase everything", "Deletes all of Intent's data on this phone and starts setup again", null) {
             confirmLoosen("Erase everything?", "Your rules, home apps, plans and counters will be deleted. This removes every pause too, so it waits like any other loosening.", "Erase") {
                 for (pkg in Store.sessions { it.activePackages(android.os.SystemClock.elapsedRealtime()) }) Reminder.cancel(this, pkg)
+                com.poshith.intent.guard.Break.end(this) // gives Do Not Disturb back if a break had it
                 Store.eraseAll()
                 startActivity(Intent(this, HomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK))
                 finish()

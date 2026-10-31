@@ -22,6 +22,8 @@ object Usage {
 
     class Today(val unlocks: Int, val unlocksKnown: Boolean, val foregroundMs: Map<String, Long>) {
         fun msFor(pkgs: Collection<String>): Long = pkgs.sumOf { foregroundMs[it] ?: 0L }
+        /** Screen time today, apart from the home screen itself and the system's own screens. */
+        fun totalMs(home: String): Long = foregroundMs.filterKeys { it != home && it != "com.android.systemui" && it != "android" }.values.sum()
     }
 
     fun hasAccess(ctx: Context): Boolean = try {

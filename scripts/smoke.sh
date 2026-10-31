@@ -116,14 +116,62 @@ adb shell cmd role add-role-holder --user 0 android.app.role.HOME $PKG > /dev/nu
     adb shell cmd package set-home-activity $PKG/.HomeActivity > /dev/null 2>&1
 adb shell input keyevent KEYCODE_HOME
 record default-home
+
+# The long-press menu: everything visible, no keyboard
+read -r mx my < <(python3 scripts/ui.py coords "Messages" | head -1)
+if [ "$mx" -gt 0 ]; then adb shell input swipe "$mx" "$my" "$mx" "$my" 900; record app-menu; adb shell input keyevent KEYCODE_BACK; fi
+
+if adb shell pm list packages | grep -q "package:com.google.android.youtube"; then
+    # Is a 2-minute session really over after 2 minutes? Choose 2 min on the pause, then wait.
+    adb shell input keyevent KEYCODE_HOME
+    swipe 50 80 50 25
+    type_text "YouTube"; sleep 1
+    tap "YouTube"
+    sleep 9 # the breath
+    mapfile -t pts < <(python3 scripts/ui.py coords "Look something up" "2 min" "Choose what it")
+    for p in "${pts[@]}"; do read -r x y <<< "$p"; [ "$x" -gt 0 ] && adb shell input tap "$x" "$y"; sleep 1; done
+    sleep 2
+    read -r ox oy < <(python3 scripts/ui.py coords "Open for 2 min" | head -1)
+    sleep 3 # let Focus Guard reconnect after the screen read
+    [ "$ox" -gt 0 ] && adb shell input tap "$ox" "$oy"
+    wait_top youtube 20
+    snap session-started
+    sleep 135
+    snap session-2-min-later    # expected: TimeUpActivity in front
+    adb shell input keyevent KEYCODE_HOME
+fi
+
+# The check-in after unlocking, and "Just checking" locking the phone
 adb shell input keyevent KEYCODE_SLEEP; sleep 2
 adb shell input keyevent KEYCODE_WAKEUP; sleep 1
 adb shell wm dismiss-keyguard; sleep 1
 record unlock-check-in
+tap "Just checking"
+sleep 3
+snap just-checking-locks
+adb shell dumpsys window | grep -m1 -iE "mShowingLockscreen|isKeyguardShowing|KeyguardShowing" > "$OUT/lock-state.txt" 2>&1
+adb shell input keyevent KEYCODE_WAKEUP; sleep 1; adb shell wm dismiss-keyguard; sleep 2
+
+# A real break: just a timer, only calls
+adb shell input keyevent KEYCODE_HOME
+tap "Focus"; sleep 1
+record quiet-sheet
+tap "15 min"
+tap "Start the break"
+record break-screen
+adb shell monkey -p com.google.android.youtube -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
+wait_top GateActivity 15
+snap break-blocks-youtube
+adb shell input keyevent KEYCODE_BACK
+sleep 2
+read -r hx hy < <(python3 scripts/ui.py coords "Hold to end the break" | head -1)
+[ "$hx" -gt 0 ] && adb shell input swipe "$hx" "$hy" "$hx" "$hy" 3800
+record break-ended
 
 # Basic phone: only essentials on the home screen, and swiping up must not open search
 adb shell input keyevent KEYCODE_HOME
 tap "Focus";              sleep 1
+tap "Basic phone";        sleep 1
 tap "Turn on basic phone"
 record basic-on
 swipe 50 80 50 25
