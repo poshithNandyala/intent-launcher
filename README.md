@@ -3,7 +3,7 @@
 An Android home screen that keeps your tools one tap away and puts a short, kind pause in front of the apps that pull you in.</p>
 
 <p align="center">
-  <a href="https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.0.2.apk"><b>⬇ Download the APK</b></a> ·
+  <a href="https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.1.0.apk"><b>⬇ Download the APK</b></a> ·
   <a href="docs/RESEARCH.md">The research</a> ·
   <a href="PRIVACY.md">Privacy</a>
 </p>
@@ -41,8 +41,8 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
 
 ## Install
 
-1. Download **[Intent-1.0.2.apk](https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.0.2.apk)** on your phone and open it. Allow "install unknown apps" for your browser if Android asks.
-   SHA-256 `185300d5b7e4bcbaea0738d85f1c996612dbb92a09356ffc370e378fa1b4d70f`
+1. Download **[Intent-1.1.0.apk](https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.1.0.apk)** on your phone and open it. Allow "install unknown apps" for your browser if Android asks.
+   SHA-256 `65f08288ce06baac51e7dee9a7a5be73fb39f15301b9509e7fb5a385229c7137`
 2. Open Intent and follow the two-minute setup: choose your essentials, the apps that pull you in, and your if-then plan.
 3. **Make Intent your home app** when asked, or later in *Settings › Apps › Default apps › Home app*.
 4. Optional but recommended: **turn on Focus Guard** (*Settings › Accessibility › Intent · Focus Guard*).
