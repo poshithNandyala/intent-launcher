@@ -554,6 +554,7 @@ class SettingsActivity : BaseActivity() {
             add(dim)
         }
         add(toggleRow("Status bar on the home screen", "Off for a calmer screen. Swipe down still opens notifications.", Store.statusBar) { Store.statusBar = it })
+        add(toggleRow("A quote a day", "One line worth stopping for, on the home screen. Tap it for another.", Store.showQuote) { Store.showQuote = it })
         add(sectionTitle("Theme"))
         val themes = listOf("system" to "Follow system", "dark" to "Dark", "light" to "Light")
         val tf = Flow(this).apply { setPadding(dp(24), dp(4), dp(24), dp(10)) }

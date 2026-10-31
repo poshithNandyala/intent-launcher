@@ -229,6 +229,10 @@ class GateActivity : BaseActivity() {
         val plan = Store.urgePlan
         if (plan.isNotBlank()) line(after, "Your plan: when I feel the pull, I'll $plan.", P.text3, 14f, 24)
         else if (Store.oneThing.isNotBlank()) line(after, "Your one thing today: ${Store.oneThing}", P.text3, 14f, 24)
+        else {
+            val q = com.poshith.intent.core.Quotes.forMoment(System.currentTimeMillis(), 60_000L)
+            line(after, "“${q.text}”" + (if (q.by.isBlank()) "" else "\n${q.by}"), P.text3, 14.5f, 26)
+        }
 
         bar.addView(button("Not now", Kind.PRIMARY) { notNow() }, lp())
         val open = button("", Kind.OUTLINE) { proceed(minutes, purpose?.label ?: "") }.apply { visibility = View.GONE }
@@ -379,7 +383,9 @@ class GateActivity : BaseActivity() {
         // With Focus Guard on, minutes count only while the app is in front. Without it nothing can
         // tell, so the minutes run on the clock from now and a reminder says when they're up.
         val guard = Launch.isGuardOn(this)
-        Store.sessions { it.admit(pkg, min, why, now, System.currentTimeMillis(), runningNow = !guard) }
+        // Minutes start now. Focus Guard pauses them while you're away from the app and resumes them
+        // when you come back; if it ever misses that, the clock still runs, so a session always ends.
+        Store.sessions { it.admit(pkg, min, why, now, System.currentTimeMillis(), runningNow = true) }
         Stats.sessionStarted(pkg, min)
         if (!guard) Reminder.schedule(this, pkg, min)
         openApp()
@@ -390,9 +396,9 @@ class GateActivity : BaseActivity() {
         if (fromLauncher) {
             val app = key?.let { Apps.byKey(it) } ?: Apps.byPkg(pkg)
             if (app != null) Launch.start(this, app) else Launch.startPackage(this, pkg)
-        } else {
-            FocusGuardService.sessionStarted(pkg)
         }
+        // Either way, Focus Guard starts timing it (even if the app's own window event goes missing).
+        FocusGuardService.sessionStarted(pkg)
         finish()
         overridePendingTransition(0, android.R.anim.fade_out)
     }

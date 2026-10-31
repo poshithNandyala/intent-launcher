@@ -53,6 +53,14 @@ class BreakScreen(private val a: BaseActivity, private val onOver: () -> Unit) {
         col.addView(time, lp().apply { topMargin = a.dp(10) })
         val back = DateFormat.getTimeFormat(a).format(Date(Store.focusUntil))
         col.addView(a.text("Back at $back", 15f, k.text2).apply { gravity = Gravity.CENTER; setPadding(0, a.dp(8), 0, 0) }, lp())
+        // Something to sit with, not to scroll: one line, changing every ten minutes.
+        val q = com.poshith.intent.core.Quotes.forMoment(System.currentTimeMillis())
+        col.addView(a.text("“${q.text}”", 15.5f, k.text2, Fonts.light(a)).apply {
+            gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f); setPadding(a.dp(40), a.dp(150), a.dp(40), 0)
+        }, lp())
+        if (q.by.isNotBlank()) col.addView(a.text(q.by.uppercase(), 11.5f, k.text3, Fonts.medium(a)).apply {
+            gravity = Gravity.CENTER; letterSpacing = 0.08f; setPadding(0, a.dp(8), 0, 0)
+        }, lp())
         centre.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         view.addView(centre, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 

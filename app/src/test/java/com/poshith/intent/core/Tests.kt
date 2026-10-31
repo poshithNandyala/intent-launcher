@@ -180,6 +180,12 @@ fun main() {
     two.resumed("a", "1", 0); two.resumed("a", "2", 10_000); two.paused("a", "1", 20_000); two.paused("a", "2", 50_000)
     check("overlapping screens count once", two.finish(60_000)["a"] == 50_000L)
 
+    // --- quotes: short, distinct, every one reachable
+    check("quotes are short", Quotes.all.all { it.text.length in 12..130 })
+    check("quotes are distinct", Quotes.all.map { it.text }.toSet().size == Quotes.all.size)
+    check("a quote a day cycles through all", (0 until Quotes.all.size).map { Quotes.forDay(it) }.toSet().size == Quotes.all.size)
+    check("next wraps around", Quotes.next(Quotes.all.last()) == Quotes.all.first())
+
     // --- lessons are complete
     check("lessons have sources", Lessons.all.all { it.source.isNotBlank() && it.body.length > 60 && it.tryThis.isNotBlank() })
     check("lesson ids unique", Lessons.all.map { it.id }.toSet().size == Lessons.all.size)

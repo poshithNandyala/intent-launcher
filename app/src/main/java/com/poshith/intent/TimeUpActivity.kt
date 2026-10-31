@@ -81,7 +81,13 @@ class TimeUpActivity : BaseActivity() {
         val why = s?.intention.orEmpty()
         if (why.isNotBlank()) col.addView(sub("You came to: ${why.lowercase()}."), lp())
         if (Store.oneThing.isNotBlank()) col.addView(sub("Next: ${Store.oneThing}", P.accent), lp())
-        col.addView(sub("Stopping where you planned is the whole skill.", P.text3), lp())
+        val q = com.poshith.intent.core.Quotes.forMoment(System.currentTimeMillis(), 60_000L)
+        col.addView(text("“${q.text}”", 16f, P.text2, Fonts.light(this)).apply {
+            gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f); setPadding(0, dp(30), 0, 0)
+        }, lp())
+        if (q.by.isNotBlank()) col.addView(text(q.by.uppercase(), 11.5f, P.text3, Fonts.medium(this)).apply {
+            gravity = Gravity.CENTER; letterSpacing = 0.08f; setPadding(0, dp(8), 0, 0)
+        }, lp())
         col.addView(vflex())
 
         col.addView(button("I'm done", Kind.PRIMARY) { done() }, lp())

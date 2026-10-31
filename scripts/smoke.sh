@@ -57,6 +57,8 @@ for _ in $(seq 1 60); do adb shell dumpsys activity | grep -q "mBooted=true\|BOO
 [ "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" -lt 29 ] && sleep 30
 [ "${NIGHT:-no}" = "yes" ] && adb shell cmd uimode night yes > /dev/null 2>&1
 adb install -r -g "$APK" > "$OUT/install.txt" 2>&1
+# YouTube asks for notifications on first launch; answer it up front so the dialog doesn't get in the way.
+adb shell pm grant com.google.android.youtube android.permission.POST_NOTIFICATIONS > /dev/null 2>&1
 cat "$OUT/install.txt"
 adb logcat -c
 adb logcat -b crash -c
@@ -128,7 +130,7 @@ if adb shell pm list packages | grep -q "package:com.google.android.youtube"; th
     type_text "YouTube"; sleep 1
     tap "YouTube"
     sleep 9 # the breath
-    mapfile -t pts < <(python3 scripts/ui.py coords "Look something up" "2 min" "Choose what it")
+    mapfile -t pts < <(python3 scripts/ui.py coords "Look something up" "2 min")
     for p in "${pts[@]}"; do read -r x y <<< "$p"; [ "$x" -gt 0 ] && adb shell input tap "$x" "$y"; sleep 1; done
     sleep 2
     read -r ox oy < <(python3 scripts/ui.py coords "Open for 2 min" | head -1)
@@ -146,7 +148,9 @@ adb shell input keyevent KEYCODE_SLEEP; sleep 2
 adb shell input keyevent KEYCODE_WAKEUP; sleep 1
 adb shell wm dismiss-keyguard; sleep 1
 record unlock-check-in
-tap "Just checking"
+read -r jx jy < <(python3 scripts/ui.py coords "Just checking" | head -1)
+sleep 3
+[ "$jx" -gt 0 ] && adb shell input tap "$jx" "$jy"
 sleep 3
 snap just-checking-locks
 adb shell dumpsys window | grep -m1 -iE "mShowingLockscreen|isKeyguardShowing|KeyguardShowing" > "$OUT/lock-state.txt" 2>&1

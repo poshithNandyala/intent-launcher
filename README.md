@@ -24,11 +24,13 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
 | **Sessions that end** | With Focus Guard on, Intent counts only the minutes the app is actually in front, and shows "time's up" when you reach your number. One "2 more minutes", then you stop. |
 | **The pause grows** | Every session after the second one today waits 2 s longer (max 20 s). You can turn this off. |
 | **Essentials never wait** | Phone, messages, OTPs, UPI, maps, camera, authenticator, the clock and keyboards are never paused. Wi-Fi, Bluetooth, hotspot and mobile data are untouched. |
-| **Focus, breaks, basic phone** | Deep work (25/50/90 min), a screen-free break (10–20 min), or *basic phone*: only your essentials, with no search at all, until you turn it off. Ending early means holding a button for 3 s. |
+| **A real break** | The strictest mode: your home screen becomes a dark timer, only calls ring through (plus WhatsApp if you keep it), and with Do Not Disturb access every other notification stays silent until the break ends. 15 min to 1 h 30, or type your own. |
+| **Focus and basic phone** | Deep work (25/50/90 min) with your essentials, or *basic phone*: only your essentials, with no search at all, until you turn it off. Ending anything early means holding a button for 3 s. |
 | **Morning quiet** | Mindful apps rest for the first 15 minutes after your first unlock of the morning, so your first thoughts are your own. |
 | **Wind-down** | At night, mindful apps rest (optionally all non-essentials). |
 | **Check-in times** | Email or work chat can open only in your check-in windows (12:30 and 18:30 by default). |
-| **"What did you pick up your phone for?"** | A quiet card right after you unlock. "Just checking" offers to lock the phone. It never blocks anything. |
+| **"What did you pick up your phone for?"** | A quiet card right after you unlock. "A call or message" shows Phone, Messages and WhatsApp; "Just checking" locks the phone; no answer in 15 s locks it too (with Focus Guard). |
+| **Screen time you can feel** | Today's screen time under the date. Time in the apps that pull you grows heavier as it climbs; calls, maps and work are never singled out. |
 | **Rules you set while calm** | Making an app harder to open is instant. Making it easier waits 20 s (adjustable). Nothing ever stops you from changing a rule, switching launchers or uninstalling. |
 | **The Mind library** | Swipe right: 50+ short lessons, each with its source and an honest evidence label, covering the science and how people like Warren Buffett, Bill Gates, Pavel Durov and Christopher Nolan use (or don't use) their phones. It ends, on purpose. |
 | **Quiet notifications** | A guided checklist to switch off alerts from anything that isn't a person. |

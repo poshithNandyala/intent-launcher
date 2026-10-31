@@ -120,7 +120,7 @@ class HomeActivity : BaseActivity() {
         private const val AUTO_LOCK_MS = 15_000L
         private val REFRESH_KEYS = setOf("home", "labels", "rules", "one_thing", "focus_until", "focus_kind", "wd_on",
             "wd_start", "wd_end", "theme", "font", "align", "text_scale", "show_date", "show_stats", "show_one_thing",
-            "morning_until", "hidden")
+            "morning_until", "hidden", "show_quote")
     }
 
     // ---------------------------------------------------------------------------------- lifecycle
@@ -288,7 +288,7 @@ class HomeActivity : BaseActivity() {
     }
 
     private fun signature() = "${Store.font}|${Store.align}|${Store.textScale}|${Store.showDate}|${Store.wallpaper}|" +
-        "${Store.wallpaper && Wallpaper.isLight(this)}|${Store.wallpaperDim}|${Store.statusBar}|${Store.breakActive()}"
+        "${Store.wallpaper && Wallpaper.isLight(this)}|${Store.wallpaperDim}|${Store.statusBar}|${Store.breakActive()}|${Store.showQuote}"
 
     private fun buildHome() {
         layoutSig = signature()
@@ -344,6 +344,26 @@ class HomeActivity : BaseActivity() {
             setOnClickListener { it.tick(); if (breakScreen == null) mindPanel().open() }
         }.legible()
         page.addView(statsLine, lp())
+
+        // Today's line: one quote a day, quiet. Tap for another.
+        if (Store.showQuote) {
+            var q = com.poshith.intent.core.Quotes.forDay(Store.dayNumber())
+            val quote = text("", scale(16.5f), k.text2, Fonts.light(this)).apply {
+                gravity = g; setLineSpacing(0f, 1.3f); setPadding(0, dp(26), 0, dp(4))
+            }.legible()
+            val by = text("", scale(12.5f), k.text3, Fonts.medium(this)).apply { gravity = g; letterSpacing = 0.06f }.legible()
+            fun show() { quote.text = "“${q.text}”"; by.text = q.by.uppercase(); by.visibility = if (q.by.isBlank()) View.GONE else View.VISIBLE }
+            show()
+            val box = vbox(g).apply {
+                background = ripple(null, dp(12).toFloat())
+                setOnClickListener {
+                    it.tick(); q = com.poshith.intent.core.Quotes.next(q)
+                    if (animationsOn()) { alpha = 0f; show(); animate().alpha(1f).setDuration(300).start() } else show()
+                }
+                addView(quote, lp()); addView(by, lp())
+            }
+            page.addView(box, lp())
+        }
 
         // Everything below the clock sits at the bottom, near your thumb. It only scrolls if it can't
         // fit (seven apps on a small phone, or very large system text), so nothing is ever cut off.

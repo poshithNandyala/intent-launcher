@@ -30,6 +30,7 @@ Your answer to "How are you feeling?" is never saved. It only changes the sugges
 | Accessibility (Focus Guard, optional) | To notice when a mindful app opens from a notification, recents or a link, to count session minutes, and to show "time's up". Also used for double-tap to lock and swipe down for notifications. |
 | Usage access (optional) | Unlock count and minutes in mindful apps on the home screen and in Your week. |
 | Notifications (optional) | A "your minutes are up" reminder when Focus Guard is off. Intent sends nothing else. |
+| Do Not Disturb access (optional) | During a real break, silence everything except calls and alarms, then put Do Not Disturb back exactly as it was. It can't read your notifications. |
 | Expand status bar | Swipe down on the home screen to open notifications. |
 | Request uninstall | "Uninstall" in an app's long-press menu. Android always asks you to confirm. |
 | Set alarm | Tapping the clock opens your alarms. |

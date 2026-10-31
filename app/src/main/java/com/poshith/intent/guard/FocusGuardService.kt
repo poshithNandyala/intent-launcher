@@ -49,7 +49,17 @@ class FocusGuardService : AccessibilityService() {
         fun openNotifications(): Boolean = instance?.performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS) ?: false
 
         /** The pause screen let a session start: if the app doesn't report itself, assume it's in front. */
-        fun sessionStarted(pkg: String) { instance?.expect(pkg) }
+        fun sessionStarted(pkg: String) {
+            val s = instance
+            if (s != null) s.expect(pkg) else { pendingExpect = pkg; pendingExpectAt = SystemClock.elapsedRealtime() }
+        }
+
+        // Kept across a restart of the service (Android can unbind and rebind it at any time):
+        // what was in front, and when the service went away, so timing picks up where it left off.
+        @Volatile private var lastFront = HOME
+        @Volatile private var unboundAt = 0L
+        @Volatile private var pendingExpect: String? = null
+        @Volatile private var pendingExpectAt = 0L
 
         private val notNowAt = HashMap<String, Long>()
 
@@ -79,6 +89,11 @@ class FocusGuardService : AccessibilityService() {
         override fun run() {
             val pkg = current
             if (!isApp(pkg)) return
+            // A session that ran out without its timer firing still ends here, with "time's up".
+            val s = Store.sessions { it[pkg] }
+            if (s != null && Store.sessions { it.remainingMs(pkg, SystemClock.elapsedRealtime()) } <= 1_000) {
+                timing = pkg; onExpire(); return
+            }
             if (Launch.decide(this@FocusGuardService, pkg) !is Decision.Open) showGate(pkg)
             else h.postDelayed(this, msToNextMinute())
         }
@@ -103,6 +118,12 @@ class FocusGuardService : AccessibilityService() {
         ignored = computeIgnored()
         val f = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT) }
         com.poshith.intent.IntentApp.listen(this, screen, f)
+        // Back after a restart: carry on with whatever was in front (its session timer included).
+        val now = SystemClock.elapsedRealtime()
+        val front = lastFront
+        if (unboundAt > 0 && now - unboundAt < 60_000 && front != HOME && front != OFF) h.post { if (current == HOME) moveTo(front) }
+        pendingExpect?.let { p -> if (now - pendingExpectAt < 10_000) expect(p) }
+        pendingExpect = null
     }
 
     private fun computeIgnored(): Set<String> {
@@ -144,6 +165,7 @@ class FocusGuardService : AccessibilityService() {
         if (next == current) return
         val prev = current
         current = next
+        lastFront = next
         val now = SystemClock.elapsedRealtime()
         if (isApp(prev)) {
             Store.sessions { it.stop(prev, now) }
@@ -224,7 +246,13 @@ class FocusGuardService : AccessibilityService() {
 
     private fun expect(pkg: String) {
         h.postDelayed({
-            if (current == GATE || current == TIMEUP) moveTo(pkg)
+            // The app should be in front by now. If no window event said so, assume it is.
+            when {
+                // Still on one of Intent's own screens (the pause just closed): the app is coming up.
+                // Not if you're on the home screen: then you really are home.
+                current == GATE || current == TIMEUP || current == SELF -> moveTo(pkg)
+                current == pkg && timing != pkg && Store.sessions { it.isActive(pkg, SystemClock.elapsedRealtime()) } -> scheduleExpiry(pkg)
+            }
         }, 700)
     }
 
@@ -244,6 +272,7 @@ class FocusGuardService : AccessibilityService() {
         if (!running) return
         running = false
         instance = null
+        unboundAt = SystemClock.elapsedRealtime()
         val now = SystemClock.elapsedRealtime()
         if (isApp(current)) Store.sessions { it.stop(current, now) }
         h.removeCallbacksAndMessages(null)
