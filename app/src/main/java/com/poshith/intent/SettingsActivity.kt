@@ -616,5 +616,9 @@ fun guardSheet(a: BaseActivity) {
     s.add(a.button("Open accessibility settings", Kind.PRIMARY) { s.dismiss(); Launch.accessibilitySettings(a) })
     s.add(a.text("In the list, choose “Intent · Focus Guard” and turn it on.\n\nIf Android says the setting is restricted (it does this for apps installed from a file): open Intent's App info, tap ⋮ at the top right, choose “Allow restricted settings”, then try again.", 14f, P.text3).apply { setLineSpacing(0f, 1.25f) }, 24)
     s.add(a.button("Open Intent's App info", Kind.PLAIN) { Launch.ownAppInfo(a) })
+    if (Launch.isXiaomi) {
+        s.add(a.text("On Xiaomi, Redmi and POCO phones, one more switch: in Intent's permissions, allow “Display pop-up windows while running in the background”. Without it, the pause can't appear over other apps.", 14f, P.text3).apply { setLineSpacing(0f, 1.25f) }, 24)
+        s.add(a.button("Open Xiaomi permissions", Kind.QUIET) { Launch.xiaomiPermissions(a) })
+    }
     s.show()
 }

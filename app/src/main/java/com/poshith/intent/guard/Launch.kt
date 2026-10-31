@@ -167,6 +167,20 @@ object Launch {
     }
 
     fun accessibilitySettings(ctx: Context) = tryStart(ctx, Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS), "Couldn't open settings")
+
+    /** Xiaomi, Redmi and POCO (MIUI / HyperOS) block apps from opening screens from the background
+     *  unless "Display pop-up windows while running in the background" is allowed. */
+    val isXiaomi: Boolean get() = listOf(Build.MANUFACTURER, Build.BRAND).any {
+        it.equals("xiaomi", true) || it.equals("redmi", true) || it.equals("poco", true)
+    }
+
+    fun xiaomiPermissions(ctx: Context) {
+        val miui = Intent("miui.intent.action.APP_PERM_EDITOR")
+            .setClassName("com.miui.securitycenter", "com.miui.permcenter.permissions.PermissionsEditorActivity")
+            .putExtra("extra_pkgname", ctx.packageName)
+        val ok = try { if (ctx !is Activity) miui.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK); ctx.startActivity(miui); true } catch (_: Exception) { false }
+        if (!ok) ownAppInfo(ctx)
+    }
     fun usageSettings(ctx: Context) {
         val i = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
         if (Build.VERSION.SDK_INT >= 29) i.data = Uri.parse("package:${ctx.packageName}")

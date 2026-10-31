@@ -44,9 +44,12 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
 3. **Make Intent your home app** when asked, or later in *Settings › Apps › Default apps › Home app*.
 4. Optional but recommended: **turn on Focus Guard** (*Settings › Accessibility › Intent · Focus Guard*).
    On Android 13 and newer, apps installed from a file get a **"Restricted setting"** message at this step. Fix it like this: *Settings › Apps › Intent › ⋮ (top right) › Allow restricted settings*, then try again.
+   On **Xiaomi, Redmi and POCO** phones, also allow *Display pop-up windows while running in the background* in Intent's permissions (Intent's Focus Guard screen has a button for it), or the pause can't appear over other apps.
 5. Optional: allow **usage access** for unlock counts, and notifications for "time's up" reminders when Focus Guard is off.
 
-Requires Android 8.0 or newer. The APK is about 260 KB.
+Requires Android 8.0 or newer. The APK is about 300 KB.
+
+If Intent ever crashes, it shows what went wrong with a **Copy details** button (please send them in an [issue](https://github.com/poshithNandyala/intent-launcher/issues)) and a one-tap way back to your previous home app.
 
 ## Privacy
 

@@ -20,6 +20,15 @@ record() { # name
     echo "== $name (pid: $(adb shell pidof $PKG || echo none))"
 }
 tap() { python3 scripts/ui.py tap "$1" || echo "   (couldn't find \"$1\")"; }
+top() { adb shell dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity"; }
+wait_top() { # activity-name seconds: wait until it's the resumed activity (slow emulators)
+    for _ in $(seq 1 "$2"); do top | grep -q "$1" && return 0; sleep 1; done
+    echo "   ($1 never came to the front)"
+}
+type_text() { # one key at a time: fast adb typing scrambles letters on some emulators
+    local i
+    for ((i = 0; i < ${#1}; i++)); do adb shell input text "${1:$i:1}"; done
+}
 # Screenshot only. uiautomator suspends other accessibility services while it runs, so Focus Guard
 # steps are recorded without it.
 snap() {
@@ -61,7 +70,7 @@ record home
 
 # Main gestures
 swipe 50 80 50 25;  record library
-adb shell input text "set"; record search
+type_text "set"; record search
 adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK
 swipe 15 50 85 50;  record mind
 adb shell input keyevent KEYCODE_BACK
@@ -76,7 +85,7 @@ adb shell input keyevent KEYCODE_BACK
 # The pause, opened from Intent's search (YouTube was suggested as a pull app during setup)
 if adb shell pm list packages | grep -q "package:com.google.android.youtube"; then
     swipe 50 80 50 25
-    adb shell input text "YouTube"; sleep 1
+    type_text "YouTube"; sleep 1
     tap "YouTube";        record pause
     sleep 6;              record pause-after-breath
     tap "Not now";        record after-not-now
@@ -86,6 +95,7 @@ if adb shell pm list packages | grep -q "package:com.google.android.youtube"; th
     adb shell settings put secure accessibility_enabled 1
     sleep 3
     adb shell monkey -p com.google.android.youtube -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
+    wait_top GateActivity 15
     snap guard-pause
     adb shell input keyevent KEYCODE_BACK       # back = "Not now" on the pause screen
     snap guard-not-now
