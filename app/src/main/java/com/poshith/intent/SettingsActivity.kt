@@ -63,11 +63,13 @@ class SettingsActivity : BaseActivity() {
 
     private val pages = ArrayList<String>()
     private lateinit var col: LinearLayout
+    private var sc: android.widget.ScrollView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         col = vbox()
         val sc = scroller(col)
+        this.sc = sc
         host.addView(sc, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         onBars { b -> sc.setPadding(0, b.top, 0, b.bottom); col.setPadding(b.left, dp(20), b.right, dp(28)) }
         pages += intent.getStringExtra(EXTRA_PAGE) ?: "main"
@@ -81,10 +83,10 @@ class SettingsActivity : BaseActivity() {
     }
 
     override fun onBackRoot() {
-        if (pages.size > 1) { pages.removeAt(pages.size - 1); render() } else finish()
+        if (pages.size > 1) { pages.removeAt(pages.size - 1); render(); sc?.scrollTo(0, 0) } else finish()
     }
 
-    private fun go(page: String) { pages += page; render() }
+    private fun go(page: String) { pages += page; render(); sc?.scrollTo(0, 0) }
 
     private fun render() {
         if (!::col.isInitialized) return
@@ -502,7 +504,7 @@ class SettingsActivity : BaseActivity() {
             card.addView(button("Turn it on", Kind.PRIMARY) { reelsSheet(this) }, lp(ViewGroup.LayoutParams.WRAP_CONTENT))
             col.addView(card, lp().apply { leftMargin = dp(16); rightMargin = dp(16); topMargin = dp(8) })
         }
-        add(row("Step in when I swipe", if (Store.reelsOn) "On" else "Paused: Shorts and Reels play as usual", if (Store.reelsOn) "On" else "Off") {
+        add(row("Step in when I swipe", if (Store.reelsOn) null else "Paused: Shorts and Reels play as usual", if (Store.reelsOn) "On" else "Off") {
             if (Store.reelsOn) confirmLoosen("Pause it?", "Shorts and Reels would play without stopping you.", "Pause it") { Store.reelsOn = false; render() }
             else { Store.reelsOn = true; render() }
         })
