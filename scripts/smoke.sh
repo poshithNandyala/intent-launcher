@@ -48,6 +48,9 @@ swipe() { # x1 y1 x2 y2 in percent of the screen
 }
 
 adb shell getprop ro.build.version.release > "$OUT/android.txt"
+# Older emulators report "booted" well before they finish starting up; let them settle.
+for _ in $(seq 1 60); do adb shell dumpsys activity | grep -q "mBooted=true\|BOOT_COMPLETED\|mBootAnimationComplete=true" && break; sleep 2; done
+[ "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" -lt 29 ] && sleep 30
 [ "${NIGHT:-no}" = "yes" ] && adb shell cmd uimode night yes > /dev/null 2>&1
 adb install -r -g "$APK" > "$OUT/install.txt" 2>&1
 cat "$OUT/install.txt"

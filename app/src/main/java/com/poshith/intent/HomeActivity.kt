@@ -178,14 +178,32 @@ class HomeActivity : BaseActivity() {
 
     /** Colors for the home screen itself. On your wallpaper: dark text on a light wallpaper, light text
      *  on a dark one. Sheets and panels keep the app's own theme. */
-    private fun ink(): Palette = ink ?: (if (Store.wallpaper) (if (Wallpaper.isLight(this)) LIGHT else DARK) else P).also { ink = it }
+    private fun ink(): Palette = ink ?: when {
+        !Store.wallpaper -> P
+        Store.wallpaperDim >= 60 -> onWallpaper(DARK) // dimmed this much, light words always read best
+        Wallpaper.isLight(this) -> onWallpaper(LIGHT)
+        else -> onWallpaper(DARK)
+    }.also { ink = it }
 
-    override fun windowColor(): Int = if (Store.wallpaper) Color.TRANSPARENT else P.bg
+    /** On a photo, grey secondary text disappears: secondary lines use the main color, slightly see-through. */
+    private fun onWallpaper(p: Palette) = Palette(p.dark, p.bg, p.surface, p.surface2, p.text,
+        (p.text and 0x00FFFFFF) or 0xDB000000.toInt(), (p.text and 0x00FFFFFF) or 0xB3000000.toInt(),
+        p.line, p.accent, p.onAccent, p.accentSoft, p.warn, p.ripple, p.scrim)
+
+    /** A gentle shade at the top and bottom edges (as phone launchers do), so words over a bright
+     *  part of the wallpaper stay readable. The middle of your wallpaper is untouched. */
+    private fun edgeShade() = android.graphics.drawable.GradientDrawable(
+        android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
+        if (ink().dark) intArrayOf(0x59000000, 0, 0x59000000) else intArrayOf(0x66FFFFFF, 0, 0x66FFFFFF))
+
+    /** On your wallpaper: clear, or a see-through black if you chose to dim it. Otherwise the theme color. */
+    override fun windowColor(): Int = if (Store.wallpaper) Color.argb(Store.wallpaperDim * 255 / 100, 0, 0, 0) else P.bg
     override fun barsOnDark(): Boolean = ink().dark
 
-    /** A soft shadow keeps words readable on a busy wallpaper. */
+    /** A tight shadow (like icon labels on Android's own home screen) keeps each letter's edge visible
+     *  on any wallpaper, without a smudge behind the line. */
     private fun <T : TextView> T.legible(): T {
-        if (Store.wallpaper) setShadowLayer(dp(7).toFloat(), 0f, dp(1).toFloat(), if (ink().dark) 0x99000000.toInt() else 0x99FFFFFF.toInt())
+        if (Store.wallpaper) setShadowLayer(dp(2.5f).toFloat(), 0f, dp(0.5f).toFloat(), if (ink().dark) 0xA6000000.toInt() else 0x99FFFFFF.toInt())
         return this
     }
 
@@ -237,7 +255,7 @@ class HomeActivity : BaseActivity() {
     }
 
     private fun signature() = "${Store.font}|${Store.align}|${Store.textScale}|${Store.showDate}|${Store.wallpaper}|" +
-        "${Store.wallpaper && Wallpaper.isLight(this)}|${Store.statusBar}"
+        "${Store.wallpaper && Wallpaper.isLight(this)}|${Store.wallpaperDim}|${Store.statusBar}"
 
     private fun buildHome() {
         layoutSig = signature()
@@ -249,6 +267,7 @@ class HomeActivity : BaseActivity() {
         val k = ink()
         host.removeAllViews()
         page = vbox(alignGravity())
+        if (Store.wallpaper && Store.wallpaperDim < 60) page.background = edgeShade()
         host.addView(page, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         removeBars(barsListener)
         onBars(barsListener)

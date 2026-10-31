@@ -542,6 +542,16 @@ class SettingsActivity : BaseActivity() {
         }
         add(bg)
         add(paragraph("On your wallpaper, the words turn dark or light to stay easy to read. Change the wallpaper itself in your phone's settings.", 14f, P.text3))
+        if (Store.wallpaper) {
+            add(text("Dim the wallpaper", 16f, P.text).apply { setPadding(dp(24), dp(12), dp(24), dp(2)) })
+            val dim = Flow(this).apply { setPadding(dp(24), dp(4), dp(24), dp(6)) }
+            for ((v, label) in listOf(0 to "Off", 35 to "A little", 60 to "More")) {
+                val c = Chip(this, label); c.on = Store.wallpaperDim == v
+                c.setOnClickListener { it.tick(); Store.wallpaperDim = v; render() }
+                dim.addView(c)
+            }
+            add(dim)
+        }
         add(toggleRow("Status bar on the home screen", "Off for a calmer screen. Swipe down still opens notifications.", Store.statusBar) { Store.statusBar = it })
         add(sectionTitle("Theme"))
         val themes = listOf("system" to "Follow system", "dark" to "Dark", "light" to "Light")

@@ -58,6 +58,8 @@ object Store {
     var swipeRightMind: Boolean get() = bool("swipe_right_mind", true); set(v) = putB("swipe_right_mind", v)
     /** The home screen sits on your own wallpaper (default), or on a plain background. */
     var wallpaper: Boolean get() = bool("wallpaper", true); set(v) = putB("wallpaper", v)
+    /** Darken the wallpaper behind the words, in percent (0, 35 or 60). */
+    var wallpaperDim: Int get() = int("wallpaper_dim", 0); set(v) = putI("wallpaper_dim", v)
     /** Show the status bar on the home screen. */
     var statusBar: Boolean get() = bool("status_bar", true); set(v) = putB("status_bar", v)
 

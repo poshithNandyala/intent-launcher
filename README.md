@@ -18,13 +18,13 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
 
 | | |
 |---|---|
-| **Text home screen** | Time, date, today's one thing, and up to 7 apps you chose, written as words. No icons, no badges, no red dots. |
+| **Text home screen** | Time, date, today's one thing, and up to 7 apps you chose, written as words on your own wallpaper (the words turn light or dark to stay readable; dim it or go plain if you like). No icons, no badges, no red dots. |
 | **Find anything by typing** | Swipe up and type. Nothing to browse, so you open what you came for. |
 | **The pause** | Apps you mark *mindful* (Instagram, YouTube…) open after one slow breath, a question about how you feel and what it's for, and a session length you pick. **"Not now" is always the biggest button.** |
 | **Sessions that end** | With Focus Guard on, Intent counts only the minutes the app is actually in front, and shows "time's up" when you reach your number. One "2 more minutes", then you stop. |
 | **The pause grows** | Every session after the second one today waits 2 s longer (max 20 s). You can turn this off. |
 | **Essentials never wait** | Phone, messages, OTPs, UPI, maps, camera, authenticator, the clock and keyboards are never paused. Wi-Fi, Bluetooth, hotspot and mobile data are untouched. |
-| **Focus, breaks, basic phone** | Deep work (25/50/90 min), a screen-free break (10–20 min), or *basic phone*: essentials only until you turn it off. Ending early means holding a button for 3 s. |
+| **Focus, breaks, basic phone** | Deep work (25/50/90 min), a screen-free break (10–20 min), or *basic phone*: only your essentials, with no search at all, until you turn it off. Ending early means holding a button for 3 s. |
 | **Morning quiet** | Mindful apps rest for the first 15 minutes after your first unlock of the morning, so your first thoughts are your own. |
 | **Wind-down** | At night, mindful apps rest (optionally all non-essentials). |
 | **Check-in times** | Email or work chat can open only in your check-in windows (12:30 and 18:30 by default). |
