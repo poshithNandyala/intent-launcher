@@ -69,6 +69,7 @@ class OnboardingActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (recreating) return
         if (steps[step] == "protect") show() // statuses change after returning from Android settings
     }
 

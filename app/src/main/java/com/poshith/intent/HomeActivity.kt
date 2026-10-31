@@ -117,11 +117,8 @@ class HomeActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (recreating) return // the theme changed in Settings: BaseActivity is redrawing this screen
         resumed = true
-        // Re-apply the theme in case it changed in Settings.
-        val before = P
-        com.poshith.intent.ui.Theme.apply(this)
-        if (before !== P) { recreate(); return }
         if (layoutSig != signature()) buildHome()
         Store.noteUnlock()
         refresh()
@@ -290,10 +287,22 @@ class HomeActivity : BaseActivity() {
             return
         }
         val stale = ArrayList<String>()
+        val moved = LinkedHashMap<String, String>()
         for (k in keys) {
-            val entry = Apps.byKey(k)
-            if (entry == null && Apps.loaded) { stale += k; continue }
-            val name = entry?.label ?: Store.customLabel(k) ?: Store.cachedName(k) ?: continue
+            var key = k
+            var entry = Apps.byKey(k)
+            if (entry == null && Apps.loaded) {
+                val pkg = k.substringBefore('/')
+                val serial = k.substringAfterLast('/').toLongOrNull()
+                // Same app and profile, but an update renamed its main screen: follow it.
+                val same = Apps.list.firstOrNull { it.pkg == pkg && it.serial == serial }
+                when {
+                    same != null -> { moved[k] = same.key; entry = same; key = same.key }
+                    serial != null && serial in Apps.pausedSerials -> continue // work profile paused: keep it for later
+                    else -> { stale += k; continue } // uninstalled
+                }
+            }
+            val name = entry?.label ?: Store.customLabel(key) ?: Store.cachedName(key) ?: continue
             val t = text(name, scale(26f), P.text, Fonts.regular(this), lines = 1).apply {
                 gravity = g or Gravity.CENTER_VERTICAL
                 minHeight = dp(52)
@@ -303,15 +312,19 @@ class HomeActivity : BaseActivity() {
                 setOnClickListener { v ->
                     v.tick()
                     hideCheckIn()
-                    val app = Apps.byKey(k)
+                    val app = Apps.byKey(key)
+                    // Before the app list has loaded, open by package name, still through the rules.
                     if (app != null) Launch.open(this@HomeActivity, app, v)
-                    else Launch.startPackage(this@HomeActivity, k.substringBefore('/'))
+                    else Launch.openPackage(this@HomeActivity, key.substringBefore('/'))
                 }
-                setOnLongClickListener { v -> v.thud(); Apps.byKey(k)?.let { appMenu(it) }; true }
+                setOnLongClickListener { v -> v.thud(); Apps.byKey(key)?.let { appMenu(it) }; true }
             }
             appsBox.addView(t, lp(ViewGroup.LayoutParams.WRAP_CONTENT).apply { gravity = g })
         }
-        if (stale.isNotEmpty()) Store.homeKeys = keys - stale.toSet()
+        if (stale.isNotEmpty() || moved.isNotEmpty()) {
+            for ((old, new) in moved) Store.customLabel(old)?.let { Store.setCustomLabel(new, it); Store.setCustomLabel(old, null) }
+            Store.homeKeys = keys.filter { it !in stale }.map { moved[it] ?: it }
+        }
     }
 
     private fun renderOneThing() {
@@ -650,7 +663,6 @@ class HomeActivity : BaseActivity() {
 
     // ---------------------------------------------------------------------------------- sheets
 
-    private fun strictness(m: Mode) = when (m) { Mode.ESSENTIAL -> 0; Mode.NORMAL -> 1; Mode.MINDFUL -> 2; Mode.BATCHED -> 3; Mode.BLOCKED -> 4 }
 
     fun appMenu(app: AppEntry) {
         val rule = Store.rule(app.pkg)
@@ -680,7 +692,7 @@ class HomeActivity : BaseActivity() {
                 val current = m == rule.mode
                 s.item(if (current) "✓  $label" else "    $label", color = if (current) P.accent else P.text) {
                     if (current) return@item
-                    if (strictness(m) < strictness(rule.mode)) {
+                    if (m.isLooserThan(rule.mode)) {
                         confirmLoosen("Make ${app.label} easier to open?", "From ${Launch.modeLabel(rule.mode)} to ${Launch.modeLabel(m)}.") {
                             Store.setMode(app.pkg, m)
                         }

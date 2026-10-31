@@ -1,11 +1,11 @@
 package com.poshith.intent.ui
 
-import android.animation.ValueAnimator
 import android.annotation.SuppressLint
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
+import android.os.SystemClock
 import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
@@ -194,9 +194,32 @@ fun BaseActivity.confirmPhrase(title: String, message: String, phrase: String, c
 @SuppressLint("ViewConstructor", "ClickableViewAccessibility")
 class HoldButton(ctx: Context, private val label: String, private val holdMs: Long, private val onDone: () -> Unit) : TextView(ctx) {
     private var progress = 0f
-    private var anim: ValueAnimator? = null
+    private var holding = false
+    private var lastTick = 0L
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = P.accentSoft }
     private val rect = RectF()
+
+    /** Timed on the real clock, not with an animator: turning animations off in Android can't skip the hold. */
+    private val ticker = object : Runnable {
+        override fun run() {
+            val now = SystemClock.uptimeMillis()
+            val dt = (now - lastTick).coerceAtLeast(0)
+            lastTick = now
+            progress = if (holding) (progress + dt / holdMs.toFloat()).coerceAtMost(1f)
+            else (progress - dt / DRAIN_MS).coerceAtLeast(0f)
+            invalidate()
+            if (holding && progress >= 1f) {
+                holding = false
+                progress = 0f
+                text = label
+                thud()
+                onDone()
+                invalidate()
+                return
+            }
+            if (holding || progress > 0f) postDelayed(this, FRAME_MS)
+        }
+    }
 
     init {
         text = label
@@ -210,8 +233,8 @@ class HoldButton(ctx: Context, private val label: String, private val holdMs: Lo
         contentDescription = "$label. Press and hold."
         setOnTouchListener { _, e ->
             when (e.actionMasked) {
-                MotionEvent.ACTION_DOWN -> { start(); true }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { stop(); true }
+                MotionEvent.ACTION_DOWN -> { setHolding(true); true }
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> { setHolding(false); true }
                 else -> true
             }
         }
@@ -219,31 +242,23 @@ class HoldButton(ctx: Context, private val label: String, private val holdMs: Lo
         setOnClickListener { onDone() }
     }
 
-    private fun start() {
-        anim?.cancel()
-        text = "Keep holding…"
-        anim = ValueAnimator.ofFloat(progress, 1f).apply {
-            duration = ((1f - progress) * holdMs).toLong().coerceAtLeast(1)
-            addUpdateListener { progress = it.animatedValue as Float; invalidate() }
-            addListener(object : android.animation.AnimatorListenerAdapter() {
-                var cancelled = false
-                override fun onAnimationCancel(animation: android.animation.Animator) { cancelled = true }
-                override fun onAnimationEnd(animation: android.animation.Animator) {
-                    if (!cancelled && progress >= 1f) { thud(); onDone(); progress = 0f; text = label; invalidate() }
-                }
-            })
-            start()
-        }
+    private fun setHolding(on: Boolean) {
+        holding = on
+        text = if (on) "Keep holding…" else label
+        lastTick = SystemClock.uptimeMillis()
+        removeCallbacks(ticker)
+        post(ticker)
     }
 
-    private fun stop() {
-        anim?.cancel()
-        text = label
-        anim = ValueAnimator.ofFloat(progress, 0f).apply {
-            duration = 200
-            addUpdateListener { progress = it.animatedValue as Float; invalidate() }
-            start()
-        }
+    override fun onDetachedFromWindow() {
+        removeCallbacks(ticker)
+        holding = false
+        super.onDetachedFromWindow()
+    }
+
+    private companion object {
+        const val FRAME_MS = 16L
+        const val DRAIN_MS = 200f
     }
 
     override fun onDraw(canvas: Canvas) {

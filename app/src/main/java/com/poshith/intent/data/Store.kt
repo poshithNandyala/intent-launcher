@@ -114,6 +114,8 @@ object Store {
     }
 
     fun setRule(pkg: String, r: Rule) {
+        // A stricter rule applies now: a session (or one-time unlock) from the looser rule ends.
+        if (rule(pkg).mode.isLooserThan(r.mode)) sessions { it.close(pkg) }
         val all = jsonObj(str("rules"))
         if (r.mode == Mode.NORMAL && r.dailyOpenLimit == 0) all.remove(pkg)
         else all.put(pkg, JSONObject().put("m", r.mode.name).put("p", r.pauseSec).put("s", r.sessionMin)

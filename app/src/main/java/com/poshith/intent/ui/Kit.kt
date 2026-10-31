@@ -394,11 +394,18 @@ abstract class BaseActivity : Activity() {
     private val barListeners = ArrayList<(Bars) -> Unit>()
     private val backStack = ArrayList<() -> Unit>()
     private var backCallback: Any? = null
+    /** The palette this screen was drawn with. If the theme changes elsewhere, the screen is redrawn
+     *  rather than mixing old and new colors. */
+    private var builtWith: Palette? = null
+    /** True once this screen is being recreated for a new theme: skip any other work in onResume. */
+    protected var recreating = false
+        private set
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Store.init(this)
         Theme.apply(this)
+        builtWith = P
         host = FrameLayout(this)
         host.setBackgroundColor(P.bg)
         host.setOnApplyWindowInsetsListener { _, ins ->
@@ -412,6 +419,12 @@ abstract class BaseActivity : Activity() {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
             backCallback = cb
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        Theme.apply(this)
+        if (builtWith !== P && !recreating) { recreating = true; recreate() }
     }
 
     override fun onAttachedToWindow() {

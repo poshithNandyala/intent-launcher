@@ -22,6 +22,9 @@ enum class Mode {
     /** Never opens until you unblock it, or type a deliberate phrase for a 5-minute pass. */
     BLOCKED;
 
+    /** Modes are declared from loosest to strictest. */
+    fun isLooserThan(other: Mode): Boolean = ordinal < other.ordinal
+
     companion object {
         fun parse(s: String?): Mode = values().firstOrNull { it.name == s } ?: NORMAL
     }
@@ -129,13 +132,15 @@ object Policy {
 
     fun decide(rule: Rule, s: Situation): Decision {
         if (s.protectedApp) return Decision.Open
-        // A session you already chose keeps working across quick app switches.
-        if (s.hasActiveSession) return Decision.Open
         if (rule.mode == Mode.ESSENTIAL) return Decision.Open
+        // Focus, a break and basic phone mean essentials only, even if a session was running before.
         if (s.focusUntilWallMs > s.nowWallMs) {
             val why = when { s.focusIsBasic -> BlockReason.BASIC; s.focusIsBreak -> BlockReason.BREAK; else -> BlockReason.FOCUS }
             return Decision.Blocked(why, s.focusUntilWallMs)
         }
+        // A session you chose (or a one-time unlock) keeps working across quick app switches.
+        // Tightening an app's rule ends its session (Store.setRule), so a new block applies at once.
+        if (s.hasActiveSession) return Decision.Open
         if (rule.mode == Mode.BLOCKED) return Decision.Blocked(BlockReason.BLOCKED_RULE, 0)
         if (rule.mode == Mode.MINDFUL && s.morningUntilWallMs > s.nowWallMs) {
             return Decision.Blocked(BlockReason.MORNING, s.morningUntilWallMs)

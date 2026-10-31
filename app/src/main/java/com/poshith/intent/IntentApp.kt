@@ -36,6 +36,10 @@ class IntentApp : Application() {
         }
     }
 
+    private val profiles = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) = Apps.refresh(c)
+    }
+
     override fun onCreate() {
         super.onCreate()
         // The crash screen runs in its own small process and needs none of this.
@@ -44,6 +48,12 @@ class IntentApp : Application() {
         Store.init(this)
         try { Reminder.createChannel(this) } catch (_: Exception) {}
         listen(this, unlock, IntentFilter(Intent.ACTION_USER_PRESENT))
+        // A work profile paused, resumed, added or removed: reload the app list.
+        listen(this, profiles, IntentFilter().apply {
+            addAction(Intent.ACTION_MANAGED_PROFILE_AVAILABLE); addAction(Intent.ACTION_MANAGED_PROFILE_UNAVAILABLE)
+            addAction(Intent.ACTION_MANAGED_PROFILE_ADDED); addAction(Intent.ACTION_MANAGED_PROFILE_REMOVED)
+            addAction(Intent.ACTION_MANAGED_PROFILE_UNLOCKED)
+        })
         Apps.refresh(this)
     }
 }

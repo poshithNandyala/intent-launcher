@@ -6,6 +6,7 @@ import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.os.Build
 import android.os.Process
+import com.poshith.intent.core.ForegroundTime
 import java.util.Calendar
 
 /**
@@ -18,7 +19,6 @@ object Usage {
     private const val PAUSED = 2           // ACTIVITY_PAUSED / MOVE_TO_BACKGROUND
     private const val SCREEN_OFF = 16      // SCREEN_NON_INTERACTIVE (API 28)
     private const val KEYGUARD_HIDDEN = 18 // unlocked (API 28)
-    private const val STOPPED = 23         // ACTIVITY_STOPPED (API 29)
 
     class Today(val unlocks: Int, val unlocksKnown: Boolean, val foregroundMs: Map<String, Long>) {
         fun msFor(pkgs: Collection<String>): Long = pkgs.sumOf { foregroundMs[it] ?: 0L }
@@ -51,25 +51,19 @@ object Usage {
         val usm = ctx.getSystemService(UsageStatsManager::class.java)
         val events = usm.queryEvents(from, to)
         val e = UsageEvents.Event()
-        val started = HashMap<String, Long>()
-        val total = HashMap<String, Long>()
+        val time = ForegroundTime(from)
         var unlocks = 0
-        fun close(pkg: String, t: Long) {
-            val s = started.remove(pkg) ?: return
-            total[pkg] = (total[pkg] ?: 0L) + (t - s).coerceAtLeast(0)
-        }
         while (events.hasNextEvent()) {
             events.getNextEvent(e)
             val pkg = e.packageName ?: continue
             when (e.eventType) {
-                RESUMED -> if (pkg !in started) started[pkg] = e.timeStamp
-                PAUSED, STOPPED -> close(pkg, e.timeStamp)
-                SCREEN_OFF -> started.keys.toList().forEach { close(it, e.timeStamp) }
+                RESUMED -> time.resumed(pkg, e.className ?: "", e.timeStamp)
+                PAUSED -> time.paused(pkg, e.className ?: "", e.timeStamp)
+                SCREEN_OFF -> time.allPaused(e.timeStamp)
                 KEYGUARD_HIDDEN -> unlocks++
             }
         }
-        started.keys.toList().forEach { close(it, to) }
-        Today(unlocks, Build.VERSION.SDK_INT >= 28, total)
+        Today(unlocks, Build.VERSION.SDK_INT >= 28, time.finish(to))
     } catch (_: Exception) { null }
 
     /** The app most recently brought to the front in the last few minutes, if any. */

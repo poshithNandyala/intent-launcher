@@ -69,6 +69,14 @@ object Launch {
         }
     }
 
+    /** An app known only by package name (tapped before the app list has loaded): same rules. */
+    fun openPackage(a: Activity, pkg: String) {
+        when (decide(a, pkg)) {
+            is Decision.Open -> if (!startPackage(a, pkg)) toast(a, "Couldn't open it")
+            else -> GateActivity.show(a, pkg, null, fromLauncher = true)
+        }
+    }
+
     fun start(ctx: Context, app: AppEntry, from: View? = null) {
         val la = ctx.getSystemService(LauncherApps::class.java)
         try {

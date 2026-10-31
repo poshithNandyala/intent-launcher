@@ -78,6 +78,7 @@ object Reminder {
         val last = Store.raw().getLong(key, 0)
         if (System.currentTimeMillis() - last < 60_000) return // the alarm backup after the in-process timer
         Store.raw().edit().putLong(key, System.currentTimeMillis()).apply()
+        Store.sessions { it.close(pkg) }
         Store.markEnded(pkg)
         if (!canNotify(ctx)) return
         val label = Apps.labelFor(ctx, pkg)

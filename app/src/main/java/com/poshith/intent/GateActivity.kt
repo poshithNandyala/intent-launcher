@@ -341,6 +341,7 @@ class GateActivity : BaseActivity() {
         leaving = true
         Stats.notNow(pkg)
         FocusGuardService.saidNotNow(pkg)
+        Store.sessions { it.close(pkg) }
         val n = Stats.notNowToday()
         Store.flash = if (n == 1) "Not now. Nice." else "Not now. That's $n times today."
         if (!fromLauncher) Launch.goHome(this)
@@ -352,9 +353,12 @@ class GateActivity : BaseActivity() {
         if (leaving) return
         leaving = true
         val now = SystemClock.elapsedRealtime()
-        Store.sessions { it.admit(pkg, min, why, now, System.currentTimeMillis()) }
+        // With Focus Guard on, minutes count only while the app is in front. Without it nothing can
+        // tell, so the minutes run on the clock from now and a reminder says when they're up.
+        val guard = Launch.isGuardOn(this)
+        Store.sessions { it.admit(pkg, min, why, now, System.currentTimeMillis(), runningNow = !guard) }
         Stats.sessionStarted(pkg, min)
-        if (!Launch.isGuardOn(this)) Reminder.schedule(this, pkg, min)
+        if (!guard) Reminder.schedule(this, pkg, min)
         openApp()
     }
 

@@ -25,8 +25,12 @@ class SessionBook {
 
     private val map = LinkedHashMap<String, Session>()
 
-    fun admit(pkg: String, minutes: Int, intention: String, nowElapsed: Long, nowWall: Long) {
-        map[pkg] = Session(pkg, minutes * 60_000L, 0, -1, nowElapsed, false, clean(intention), nowWall)
+    /**
+     * Starts a session. [runningNow]: count time from this moment, used when Focus Guard is off and
+     * nobody can tell when the app is in front: the minutes then simply run on the clock.
+     */
+    fun admit(pkg: String, minutes: Int, intention: String, nowElapsed: Long, nowWall: Long, runningNow: Boolean = false) {
+        map[pkg] = Session(pkg, minutes * 60_000L, 0, if (runningNow) nowElapsed else -1, nowElapsed, false, clean(intention), nowWall)
     }
 
     operator fun get(pkg: String): Session? = map[pkg]
@@ -59,10 +63,11 @@ class SessionBook {
 
     fun stop(pkg: String, now: Long) {
         val s = map[pkg] ?: return
-        if (s.runningSince >= 0) {
-            s.usedMs += (now - s.runningSince).coerceAtLeast(0)
-            s.runningSince = -1
-        }
+        // Only a running session records when it stopped. Touching a session that is already stopped
+        // would restart its 10-minute gap and bring an ended session back.
+        if (s.runningSince < 0) return
+        s.usedMs += (now - s.runningSince).coerceAtLeast(0)
+        s.runningSince = -1
         s.lastActive = now
     }
 

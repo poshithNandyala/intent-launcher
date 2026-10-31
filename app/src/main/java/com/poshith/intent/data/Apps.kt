@@ -33,6 +33,8 @@ class AppEntry(
 object Apps {
     @Volatile var list: List<AppEntry> = emptyList(); private set
     @Volatile var loaded = false; private set
+    /** Profiles that are paused (a work profile switched off): their apps are gone for now, not uninstalled. */
+    @Volatile var pausedSerials: Set<Long> = emptySet(); private set
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     private val io = Executors.newSingleThreadExecutor()
     private val main = Handler(Looper.getMainLooper())
@@ -45,7 +47,9 @@ object Apps {
         val app = ctx.applicationContext
         register(app)
         io.execute {
-            val fresh = try { load(app) } catch (_: Exception) { list }
+            val paused = HashSet<Long>()
+            val fresh = try { load(app, paused) } catch (_: Exception) { list }
+            pausedSerials = paused
             list = fresh
             loaded = true
             Store.cacheNames(fresh.associate { it.key to it.sysLabel })
@@ -66,16 +70,16 @@ object Apps {
         }, main)
     }
 
-    private fun load(ctx: Context): List<AppEntry> {
+    private fun load(ctx: Context, paused: MutableSet<Long>): List<AppEntry> {
         val la = ctx.getSystemService(LauncherApps::class.java) ?: return emptyList()
         val um = ctx.getSystemService(UserManager::class.java)
         val me = Process.myUserHandle()
         val out = ArrayList<AppEntry>()
         val profiles = try { la.profiles } catch (_: Exception) { listOf(me) }
         for (user in profiles) {
-            // Paused work profiles are skipped. Hidden profiles (Private Space) are never listed to us.
-            if (user != me && (um?.isQuietModeEnabled(user) == true)) continue
             val serial = um?.getSerialNumberForUser(user) ?: 0L
+            // Paused work profiles are skipped (and remembered). Hidden profiles (Private Space) are never listed to us.
+            if (user != me && (um?.isQuietModeEnabled(user) == true)) { paused += serial; continue }
             val infos: List<LauncherActivityInfo> = try { la.getActivityList(null, user) } catch (_: Exception) { continue }
             for (info in infos) {
                 val pkg = info.componentName.packageName

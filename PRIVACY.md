@@ -6,6 +6,7 @@
 
 - **No internet.** The app does not request the `INTERNET` permission, so Android won't let it open a network connection. You can confirm this in *Settings › Apps › Intent › Permissions* or in [the manifest](app/src/main/AndroidManifest.xml).
 - **No accounts, ads, analytics, crash reporters or trackers.** The app uses no third-party libraries at all.
+- **No backups.** Intent opts out of Android's cloud backup and phone-to-phone transfer ([rules](app/src/main/res/xml/data_extraction_rules.xml)), so its data doesn't leave the phone that way either. The trade-off: on a new phone, setup starts fresh.
 - **It can't read your screen.** Focus Guard (the optional accessibility service) is set to `canRetrieveWindowContent="false"` ([config](app/src/main/res/xml/focus_guard.xml)), so Android doesn't give it your messages, text or anything else you see. It receives one kind of event, "a new window came to the front", and keeps only that app's package name (for example `com.instagram.android`).
 
 ## What stays on your phone

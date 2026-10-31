@@ -73,6 +73,7 @@ class SettingsActivity : BaseActivity() {
 
     override fun onResume() {
         super.onResume()
+        if (recreating) return
         render() // permissions may have changed in Android settings
     }
 
@@ -281,9 +282,12 @@ class SettingsActivity : BaseActivity() {
                 for (p in removed) Store.setMode(p, Mode.NORMAL)
                 ov.close(); render()
             }
-            // Removing an app from Mindful, Check-in or Blocked makes it easier to open: that waits.
-            val loosening = removed.isNotEmpty() && mode != Mode.ESSENTIAL
-            if (loosening) confirmLoosen("Make ${names(removed, 2)} easier to open?", "They'll open without ${if (mode == Mode.BLOCKED) "being blocked" else "a pause"}.") { apply() }
+            // Anything that makes an app easier to open waits: taking it out of a stricter list
+            // (back to normal), or adding it here from a stricter one (Blocked to Essential, say).
+            val easier = removed.filter { Mode.NORMAL.isLooserThan(mode) } +
+                added.filter { mode.isLooserThan(Store.rule(it).mode) }
+            if (easier.isNotEmpty()) confirmLoosen("Make ${names(easier.toSet(), 2)} easier to open?",
+                "They'll open with fewer limits than now.") { apply() }
             else apply()
         }
         ov = Overlay(this, picker.build()).show()

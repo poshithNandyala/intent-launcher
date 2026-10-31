@@ -35,11 +35,21 @@ fun main() {
     check("mindful pauses", Policy.decide(mindful, sit()) is Decision.Pause)
     check("blocked blocks", (Policy.decide(Rule(Mode.BLOCKED), sit()) as? Decision.Blocked)?.reason == BlockReason.BLOCKED_RULE)
 
-    // --- protected apps and sessions always win
+    // --- protected apps always win; a session wins over everything except focus, breaks and basic phone
     check("protected beats blocked", Policy.decide(Rule(Mode.BLOCKED), sit(protected = true)) == Decision.Open)
     check("protected beats focus", Policy.decide(Rule(Mode.NORMAL), sit(protected = true, focusUntil = 2_000_000L)) == Decision.Open)
     check("active session opens mindful", Policy.decide(mindful, sit(session = true)) == Decision.Open)
-    check("active session opens during focus", Policy.decide(mindful, sit(session = true, focusUntil = 2_000_000L)) == Decision.Open)
+    check("focus beats an active session", (Policy.decide(mindful, sit(session = true, focusUntil = 2_000_000L)) as? Decision.Blocked)?.reason == BlockReason.FOCUS)
+    check("basic phone beats an active session", (Policy.decide(mindful, sit(session = true, focusUntil = Long.MAX_VALUE / 2, basic = true)) as? Decision.Blocked)?.reason == BlockReason.BASIC)
+    check("break beats an active session", (Policy.decide(Rule(Mode.NORMAL), sit(session = true, focusUntil = 2_000_000L, isBreak = true)) as? Decision.Blocked)?.reason == BlockReason.BREAK)
+    check("one-time unlock opens blocked", Policy.decide(Rule(Mode.BLOCKED), sit(session = true)) == Decision.Open)
+    check("session beats wind-down", Policy.decide(mindful, sit(wd = Window(22 * 60, 6 * 60), minute = 23 * 60, session = true)) == Decision.Open)
+
+    // --- which changes make an app easier to open (those wait)
+    check("blocked to essential is looser", Mode.ESSENTIAL.isLooserThan(Mode.BLOCKED))
+    check("blocked to mindful is looser", Mode.MINDFUL.isLooserThan(Mode.BLOCKED))
+    check("mindful to blocked is stricter", !Mode.BLOCKED.isLooserThan(Mode.MINDFUL))
+    check("same mode isn't looser", !Mode.MINDFUL.isLooserThan(Mode.MINDFUL))
 
     // --- focus
     val f = Policy.decide(Rule(Mode.NORMAL), sit(focusUntil = 2_000_000L))
@@ -122,6 +132,23 @@ fun main() {
     check("extend only once", !b.extend("insta", SessionBook.EXTENSION_MS, 100_000 + 5 * 60_000))
     check("keeps intention", b["insta"]?.intention == "A message")
 
+    // --- an ended session stays ended (stop() on a stopped session must not restart its gap)
+    val e = SessionBook()
+    e.admit("x", 5, "", nowElapsed = 0, nowWall = 0)
+    e.start("x", 0); e.stop("x", 60_000)
+    check("ended by the gap", !e.isActive("x", 60_000 + 11 * 60_000))
+    e.stop("x", 60_000 + 11 * 60_000) // Focus Guard leaving the app as the pause appears
+    check("stop doesn't revive an ended session", !e.isActive("x", 60_000 + 12 * 60_000))
+
+    // --- without Focus Guard, minutes run on the clock from the moment you chose them
+    val w = SessionBook()
+    w.admit("two", 2, "", nowElapsed = 0, nowWall = 0, runningNow = true)
+    w.admit("thirty", 30, "", nowElapsed = 0, nowWall = 0, runningNow = true)
+    check("2-min session active at 1 min", w.isActive("two", 60_000))
+    check("2-min session over at 3 min", !w.isActive("two", 3 * 60_000))
+    check("30-min session still active at 11 min", w.isActive("thirty", 11 * 60_000))
+    check("30-min session over at 31 min", !w.isActive("thirty", 31 * 60_000))
+
     // --- serialization round trip
     b.admit("yt", 10, "Look | something\nup", nowElapsed = 5, nowWall = 7)
     val copy = SessionBook()
@@ -132,6 +159,23 @@ fun main() {
     check("bad input ignored", copy.activePackages(0).isEmpty())
     b.prune(100_000 + 60 * 60_000)
     check("prune removes old", b.activePackages(100_000 + 60 * 60_000).isEmpty())
+
+    // --- foreground time from usage events
+    val t = ForegroundTime(windowStart = 0)
+    t.resumed("app", "A", 0)
+    t.paused("app", "A", 60_000)      // moving to another screen of the same app:
+    t.resumed("app", "B", 60_000)     //   A paused, B resumed, (A stopped is ignored)
+    t.paused("app", "B", 120_000)
+    t.resumed("other", "X", 130_000)
+    t.allPaused(190_000)              // screen off
+    t.paused("late", "Y", 500_000)    // first event is a pause: open since the window began
+    val totals = t.finish(600_000)
+    check("screens of one app add up", totals["app"] == 120_000L)
+    check("screen off ends time", totals["other"] == 60_000L)
+    check("open since the start counts", totals["late"] == 500_000L)
+    val two = ForegroundTime(0)
+    two.resumed("a", "1", 0); two.resumed("a", "2", 10_000); two.paused("a", "1", 20_000); two.paused("a", "2", 50_000)
+    check("overlapping screens count once", two.finish(60_000)["a"] == 50_000L)
 
     // --- lessons are complete
     check("lessons have sources", Lessons.all.all { it.source.isNotBlank() && it.body.length > 60 && it.tryThis.isNotBlank() })

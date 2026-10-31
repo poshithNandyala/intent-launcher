@@ -68,8 +68,23 @@ class FocusGuardService : AccessibilityService() {
     /** The app whose pause screen is on its way (started, not yet in front), and when. */
     private var gatePending: String? = null
     private var gatePendingAt = 0L
+    /** Recent pause starts per app, so an app that keeps reopening itself can't start a loop. */
+    private val gateStarts = HashMap<String, ArrayDeque<Long>>()
     private var ignored: Set<String> = setOf("com.android.systemui")
     private val expireRunnable = Runnable { onExpire() }
+
+    /** Rules change at minute boundaries (a check-in window ends, wind-down starts). While you stay
+     *  in an app, check again just after each minute turns, so they apply on time. */
+    private val recheck = object : Runnable {
+        override fun run() {
+            val pkg = current
+            if (!isApp(pkg)) return
+            if (Launch.decide(this@FocusGuardService, pkg) !is Decision.Open) showGate(pkg)
+            else h.postDelayed(this, msToNextMinute())
+        }
+    }
+
+    private fun msToNextMinute(): Long = 60_000L - System.currentTimeMillis() % 60_000L + 1_000L
 
     private val screen = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
@@ -114,6 +129,12 @@ class FocusGuardService : AccessibilityService() {
             if (pkg in ignored) return
             pkg
         }
+        if (next == current) {
+            // The same app put up another screen. If it should be paused but the pause isn't in front
+            // (a splash screen opened the real app over it), pause it again.
+            if (isApp(next) && Launch.decide(this, next) !is Decision.Open) showGate(next)
+            return
+        }
         moveTo(next)
     }
 
@@ -128,7 +149,11 @@ class FocusGuardService : AccessibilityService() {
             Store.sessions { it.stop(prev, now) }
             if (timing == prev) { h.removeCallbacks(expireRunnable); timing = null }
         }
-        if (isApp(next)) enter(next)
+        h.removeCallbacks(recheck)
+        if (isApp(next)) {
+            enter(next)
+            h.postDelayed(recheck, msToNextMinute())
+        }
     }
 
     private fun enter(pkg: String) {
@@ -146,9 +171,13 @@ class FocusGuardService : AccessibilityService() {
 
     private fun showGate(pkg: String) {
         val now = SystemClock.elapsedRealtime()
-        // Only skip if this exact pause is already on its way. Once it has been shown, an app that
-        // comes back in front (a splash screen opening the real app) gets the pause again.
-        if (gatePending == pkg && now - gatePendingAt < 1500) return
+        // Skip only if this exact pause was started a moment ago. An app that comes back in front after
+        // that (a splash screen opening the real app) gets the pause again, at most 5 times in 10 s.
+        if (gatePending == pkg && now - gatePendingAt < 400) return
+        val starts = gateStarts.getOrPut(pkg) { ArrayDeque() }
+        while (starts.isNotEmpty() && now - starts.first() > 10_000) starts.removeFirst()
+        if (starts.size >= 5) return
+        starts.addLast(now)
         gatePending = pkg
         gatePendingAt = now
         try {
