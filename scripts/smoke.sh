@@ -9,6 +9,10 @@ APK=$(ls out/Intent-*.apk | head -1)
 n=0
 
 crashed() { [ -s "$OUT/crash.txt" ]; }
+# Only Intent's own crashes (the crash log also holds other apps', e.g. the uiautomator test tool).
+intent_crashes() {
+    adb logcat -d -b crash 2>/dev/null | awk '/FATAL EXCEPTION/{keep=0} /Process: com.poshith.intent/{keep=1} {buf[NR]=$0} keep{print}' > "$OUT/crash.txt"
+}
 record() { # name
     n=$((n + 1))
     local name
@@ -16,7 +20,7 @@ record() { # name
     sleep 2
     adb exec-out screencap -p > "$OUT/$name.png" 2>/dev/null
     python3 scripts/ui.py texts > "$OUT/$name.txt" 2>&1
-    adb logcat -d -b crash > "$OUT/crash.txt" 2>&1
+    intent_crashes
     echo "== $name (pid: $(adb shell pidof $PKG || echo none))"
 }
 tap() { python3 scripts/ui.py tap "$1" || echo "   (couldn't find \"$1\")"; }
@@ -38,7 +42,7 @@ snap() {
     sleep 3
     adb exec-out screencap -p > "$OUT/$name.png" 2>/dev/null
     adb shell dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity" > "$OUT/$name.txt" 2>&1
-    adb logcat -d -b crash > "$OUT/crash.txt" 2>&1
+    intent_crashes
     echo "== $name: $(cat "$OUT/$name.txt")"
 }
 size=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1)

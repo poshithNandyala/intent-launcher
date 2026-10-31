@@ -196,8 +196,9 @@ class HomeActivity : BaseActivity() {
         android.graphics.drawable.GradientDrawable.Orientation.TOP_BOTTOM,
         if (ink().dark) intArrayOf(0x59000000, 0, 0x59000000) else intArrayOf(0x66FFFFFF, 0, 0x66FFFFFF))
 
-    /** On your wallpaper: clear, or a see-through black if you chose to dim it. Otherwise the theme color. */
-    override fun windowColor(): Int = if (Store.wallpaper) Color.argb(Store.wallpaperDim * 255 / 100, 0, 0, 0) else P.bg
+    /** On your wallpaper the window is clear (the dimming, if any, is drawn once, by the screen itself). */
+    override fun windowColor(): Int = if (Store.wallpaper) Color.TRANSPARENT else P.bg
+    private fun screenColor(): Int = if (Store.wallpaper) Color.argb(Store.wallpaperDim * 255 / 100, 0, 0, 0) else P.bg
     override fun barsOnDark(): Boolean = ink().dark
 
     /** A tight shadow (like icon labels on Android's own home screen) keeps each letter's edge visible
@@ -211,7 +212,7 @@ class HomeActivity : BaseActivity() {
         val flag = WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER
         if (Store.wallpaper) window.addFlags(flag) else window.clearFlags(flag)
         Theme.apply(this)
-        host.setBackgroundColor(windowColor())
+        host.setBackgroundColor(screenColor())
         applyStatusBar()
     }
 

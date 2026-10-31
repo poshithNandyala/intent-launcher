@@ -96,6 +96,14 @@ object Theme {
         val light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
         // Window.getInsetsController() throws until the decor view exists; asking the decor view creates it.
         a.window.decorView.windowInsetsController?.setSystemBarsAppearance(if (dark) 0 else light, light)
+        // Android 11 ignores that when the theme set light bars (a known platform bug): set the old flags too.
+        if (Build.VERSION.SDK_INT == 30) {
+            @Suppress("DEPRECATION")
+            val flags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+            val v = a.window.decorView
+            @Suppress("DEPRECATION")
+            v.systemUiVisibility = if (dark) v.systemUiVisibility and flags.inv() else v.systemUiVisibility or flags
+        }
     }
 
     @Suppress("DEPRECATION")
