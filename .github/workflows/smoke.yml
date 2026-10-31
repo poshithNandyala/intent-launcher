@@ -18,7 +18,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        api: [35, 30, 28]
+        include:
+          # A phone-sized screen in dark mode, the same in light mode, and a small old phone.
+          - { api: 35, profile: pixel_6, night: "yes" }
+          - { api: 30, profile: pixel_6, night: "no" }
+          - { api: 28, profile: "", night: "no" }
     steps:
       - uses: actions/checkout@v4
 
@@ -48,9 +52,10 @@ jobs:
           api-level: ${{ matrix.api }}
           arch: x86_64
           target: google_apis
+          profile: ${{ matrix.profile }}
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash scripts/smoke.sh
+          script: NIGHT=${{ matrix.night }} bash scripts/smoke.sh
 
       - name: Publish results
         if: always()

@@ -1,6 +1,9 @@
 package com.poshith.intent
 
 import android.content.Intent
+import android.graphics.Color
+import android.graphics.drawable.ColorDrawable
+import android.os.Build
 import android.content.SharedPreferences
 import android.os.Bundle
 import android.os.Handler
@@ -13,12 +16,16 @@ import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
+import android.view.WindowInsetsController
+import android.view.WindowManager
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextClock
 import android.widget.TextView
+import com.poshith.intent.core.Decision
 import com.poshith.intent.core.Mode
 import com.poshith.intent.data.AppEntry
 import com.poshith.intent.data.Apps
@@ -28,6 +35,11 @@ import com.poshith.intent.data.Usage
 import com.poshith.intent.guard.FocusGuardService
 import com.poshith.intent.guard.Launch
 import com.poshith.intent.ui.BaseActivity
+import com.poshith.intent.ui.DARK
+import com.poshith.intent.ui.LIGHT
+import com.poshith.intent.ui.Palette
+import com.poshith.intent.ui.Theme
+import com.poshith.intent.ui.Wallpaper
 import com.poshith.intent.ui.Chip
 import com.poshith.intent.ui.Flow
 import com.poshith.intent.ui.Fonts
@@ -73,6 +85,7 @@ class HomeActivity : BaseActivity() {
     private lateinit var appsBox: LinearLayout
     private lateinit var bottom: LinearLayout
     private var midScroll: android.widget.ScrollView? = null
+    private var ink: Palette? = null
     private var library: Library? = null
     private var mind: MindPanel? = null
 
@@ -161,19 +174,79 @@ class HomeActivity : BaseActivity() {
 
     private fun scale(sp: Float) = sp * Store.textScale
 
+    // ---------------------------------------------------------------------------------- wallpaper
+
+    /** Colors for the home screen itself. On your wallpaper: dark text on a light wallpaper, light text
+     *  on a dark one. Sheets and panels keep the app's own theme. */
+    private fun ink(): Palette = ink ?: (if (Store.wallpaper) (if (Wallpaper.isLight(this)) LIGHT else DARK) else P).also { ink = it }
+
+    override fun windowColor(): Int = if (Store.wallpaper) Color.TRANSPARENT else P.bg
+    override fun barsOnDark(): Boolean = ink().dark
+
+    /** A soft shadow keeps words readable on a busy wallpaper. */
+    private fun <T : TextView> T.legible(): T {
+        if (Store.wallpaper) setShadowLayer(dp(7).toFloat(), 0f, dp(1).toFloat(), if (ink().dark) 0x99000000.toInt() else 0x99FFFFFF.toInt())
+        return this
+    }
+
+    private fun applyWindow() {
+        val flag = WindowManager.LayoutParams.FLAG_SHOW_WALLPAPER
+        if (Store.wallpaper) window.addFlags(flag) else window.clearFlags(flag)
+        Theme.apply(this)
+        host.setBackgroundColor(windowColor())
+        applyStatusBar()
+    }
+
+    /** Hide the status bar on the home screen if you chose to (swipe down from the top still shows it). */
+    private fun applyStatusBar() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            val c = window.decorView.windowInsetsController ?: return
+            if (Store.statusBar) c.show(WindowInsets.Type.statusBars())
+            else {
+                c.systemBarsBehavior = WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+                c.hide(WindowInsets.Type.statusBars())
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val f = WindowManager.LayoutParams.FLAG_FULLSCREEN
+            if (Store.statusBar) window.clearFlags(f) else window.addFlags(f)
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        applyStatusBar()
+    }
+
+    /** A short line under the date ("Basic phone is on…"), gone after a few seconds. */
+    private fun hint(msg: String) {
+        Store.flash = msg
+        renderStats()
+    }
+
+    /** Swipe up / search. Basic phone means essentials only: no search at all. */
+    private fun openLibrary() {
+        if (Store.basicPhone) { hint("Basic phone is on: just your essentials."); return }
+        library().open()
+    }
+
     private fun alignGravity(): Int = when (Store.align) {
         "center" -> Gravity.CENTER_HORIZONTAL
         "end" -> Gravity.END
         else -> Gravity.START
     }
 
-    private fun signature() = "${Store.font}|${Store.align}|${Store.textScale}|${Store.showDate}"
+    private fun signature() = "${Store.font}|${Store.align}|${Store.textScale}|${Store.showDate}|${Store.wallpaper}|" +
+        "${Store.wallpaper && Wallpaper.isLight(this)}|${Store.statusBar}"
 
     private fun buildHome() {
         layoutSig = signature()
         closeAllLayers()
         library = null
         mind = null
+        ink = null
+        applyWindow()
+        val k = ink()
         host.removeAllViews()
         page = vbox(alignGravity())
         host.addView(page, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
@@ -186,14 +259,14 @@ class HomeActivity : BaseActivity() {
             format24Hour = "HH:mm"
             textSize = scale(64f)
             typeface = Fonts.light(this@HomeActivity)
-            setTextColor(P.text)
+            setTextColor(k.text)
             fontFeatureSettings = "tnum"
             includeFontPadding = false
             gravity = g
             contentDescription = "Clock. Opens alarms."
             background = ripple(null, dp(12).toFloat())
             setOnClickListener { it.tick(); Launch.alarms(this@HomeActivity) }
-        }
+        }.legible()
         page.addView(clock, lp().apply { gravity = g })
         if (Store.showDate) {
             val date = TextClock(this).apply {
@@ -201,15 +274,15 @@ class HomeActivity : BaseActivity() {
                 format24Hour = "EEEE, d MMMM"
                 textSize = scale(16f)
                 typeface = Fonts.regular(this@HomeActivity)
-                setTextColor(P.text2)
+                setTextColor(k.text2)
                 gravity = g
                 setPadding(0, dp(6), 0, 0)
                 background = ripple(null, dp(8).toFloat())
                 setOnClickListener { it.tick(); Launch.calendar(this@HomeActivity) }
-            }
+            }.legible()
             page.addView(date, lp().apply { gravity = g })
         }
-        statsLine = text("", scale(13.5f), P.text3).apply { gravity = g; setPadding(0, dp(10), 0, 0); visibility = View.GONE }
+        statsLine = text("", scale(13.5f), k.text3).apply { gravity = g; setPadding(0, dp(10), 0, 0); visibility = View.GONE }.legible()
         page.addView(statsLine, lp())
 
         // Everything below the clock sits at the bottom, near your thumb. It only scrolls if it can't
@@ -224,26 +297,33 @@ class HomeActivity : BaseActivity() {
         }
         page.addView(midScroll, lp(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
-        checkIn = vbox(g).apply { visibility = View.GONE }
+        checkIn = vbox(g).apply {
+            visibility = View.GONE
+            // On a wallpaper the question sits on a soft card, so the choices are easy to read.
+            if (Store.wallpaper) {
+                background = rounded((k.surface and 0x00FFFFFF) or 0xE6000000.toInt(), dp(22).toFloat())
+                setPadding(dp(18), dp(16), dp(18), dp(14))
+            }
+        }
         mid.addView(checkIn, lp().apply { bottomMargin = dp(18); topMargin = dp(12) })
 
-        oneThing = text("", scale(16f), P.text2).apply {
+        oneThing = text("", scale(16f), k.text2).apply {
             gravity = g
             setPadding(0, dp(8), 0, dp(8))
             minHeight = dp(44)
             background = ripple(null, dp(10).toFloat())
             setOnClickListener { it.tick(); oneThingSheet() }
-        }
+        }.legible()
         mid.addView(oneThing, lp())
 
-        status = text("", scale(15f), P.accent, Fonts.medium(this)).apply {
+        status = text("", scale(15f), k.accent, Fonts.medium(this)).apply {
             gravity = g
             setPadding(0, dp(4), 0, dp(10))
             minHeight = dp(40)
             visibility = View.GONE
             background = ripple(null, dp(10).toFloat())
             setOnClickListener { it.tick(); statusSheet() }
-        }
+        }.legible()
         mid.addView(status, lp())
 
         appsBox = vbox(g)
@@ -261,7 +341,7 @@ class HomeActivity : BaseActivity() {
         page.setOnTouchListener { _, e -> taps.onTouchEvent(e); true }
     }
 
-    private fun bottomItem(label: String, onClick: () -> Unit): TextView = text(label, 15f, P.text2).apply {
+    private fun bottomItem(label: String, onClick: () -> Unit): TextView = text(label, 15f, ink().text2).legible().apply {
         gravity = Gravity.CENTER
         background = ripple(null, dp(20).toFloat())
         isClickable = true
@@ -283,7 +363,7 @@ class HomeActivity : BaseActivity() {
         val keys = Store.homeKeys
         val g = alignGravity()
         if (keys.isEmpty()) {
-            appsBox.addView(text("Long-press anywhere to choose your apps", scale(15f), P.text3).apply { gravity = g; setPadding(0, dp(8), 0, dp(8)) }, lp())
+            appsBox.addView(text("Long-press anywhere to choose your apps", scale(15f), ink().text3).apply { gravity = g; setPadding(0, dp(8), 0, dp(8)) }.legible(), lp())
             return
         }
         val stale = ArrayList<String>()
@@ -302,8 +382,10 @@ class HomeActivity : BaseActivity() {
                     else -> { stale += k; continue } // uninstalled
                 }
             }
+            // Basic phone: only what can open is shown. The rest isn't even there.
+            if (Store.basicPhone && Launch.decide(this, key.substringBefore('/')) !is Decision.Open) continue
             val name = entry?.label ?: Store.customLabel(key) ?: Store.cachedName(key) ?: continue
-            val t = text(name, scale(26f), P.text, Fonts.regular(this), lines = 1).apply {
+            val t = text(name, scale(26f), ink().text, Fonts.regular(this), lines = 1).legible().apply {
                 gravity = g or Gravity.CENTER_VERTICAL
                 minHeight = dp(52)
                 setPadding(0, dp(6), 0, dp(6))
@@ -334,10 +416,10 @@ class HomeActivity : BaseActivity() {
         val t = Store.oneThing
         if (t.isBlank()) {
             oneThing.text = "+ Today's one thing"
-            oneThing.setTextColor(P.text3)
+            oneThing.setTextColor(ink().text3)
         } else {
             oneThing.text = "Today · $t"
-            oneThing.setTextColor(P.text2)
+            oneThing.setTextColor(ink().text2)
         }
     }
 
@@ -365,13 +447,13 @@ class HomeActivity : BaseActivity() {
         val flash = Store.flash
         if (flash.isNotBlank() && System.currentTimeMillis() - Store.flashAt < 8_000) {
             statsLine.visibility = View.VISIBLE
-            statsLine.setTextColor(P.accent)
+            statsLine.setTextColor(ink().accent)
             statsLine.text = flash
             Store.flash = ""
             ui.postDelayed({ renderStats() }, 4_000)
             return
         }
-        statsLine.setTextColor(P.text3)
+        statsLine.setTextColor(ink().text3)
         if (!Store.showStats) { statsLine.visibility = View.GONE; return }
         com.poshith.intent.ui.Bg.run {
             val usage = Usage.today(this)
@@ -404,11 +486,12 @@ class HomeActivity : BaseActivity() {
         shownCheckInFor = at
         checkIn.removeAllViews()
         val g = alignGravity()
-        checkIn.addView(text("What did you pick up your phone for?", scale(17f), P.text, Fonts.medium(this)).apply { gravity = g }, lp())
+        val k = ink()
+        checkIn.addView(text("What did you pick up your phone for?", scale(17f), k.text, Fonts.medium(this)).apply { gravity = g }, lp())
         val flow = Flow(this).apply { setPadding(0, dp(10), 0, 0) }
-        fun chip(label: String, action: () -> Unit) = Chip(this, label).apply { setOnClickListener { it.tick(); action() } }
+        fun chip(label: String, action: () -> Unit) = Chip(this, label, k).apply { setOnClickListener { it.tick(); action() } }
         flow.addView(chip("A call or message") { hideCheckIn() })
-        flow.addView(chip("Something specific") { hideCheckIn(); library().open() })
+        if (!Store.basicPhone) flow.addView(chip("Something specific") { hideCheckIn(); openLibrary() })
         flow.addView(chip("Just checking") { justChecking() })
         checkIn.addView(flow, lp())
         showCheckIn()
@@ -419,8 +502,8 @@ class HomeActivity : BaseActivity() {
         Stats.justChecking()
         checkIn.removeAllViews()
         val g = alignGravity()
-        checkIn.addView(text("Nothing needs you right now.", scale(17f), P.text, Fonts.medium(this)).apply { gravity = g }, lp())
-        checkIn.addView(text("Noticing the habit is how it changes.", scale(15f), P.text2).apply { gravity = g; setPadding(0, dp(4), 0, dp(10)) }, lp())
+        checkIn.addView(text("Nothing needs you right now.", scale(17f), ink().text, Fonts.medium(this)).apply { gravity = g }, lp())
+        checkIn.addView(text("Noticing the habit is how it changes.", scale(15f), ink().text2).apply { gravity = g; setPadding(0, dp(4), 0, dp(10)) }, lp())
         val row = hbox()
         val lock = button(if (FocusGuardService.running) "Lock the phone" else "Put it down", Kind.QUIET) {
             hideCheckIn()
@@ -512,7 +595,7 @@ class HomeActivity : BaseActivity() {
         } else {
             val key = Store.swipeLeftKey
             val app = if (key.isNotBlank()) Apps.byKey(key) else null
-            if (app != null) Launch.open(this, app, null) else library().open()
+            if (app != null) Launch.open(this, app, null) else openLibrary()
         }
         return true
     }
@@ -527,7 +610,7 @@ class HomeActivity : BaseActivity() {
         if (midScroll?.canScrollVertically(if (up) 1 else -1) == true) return false
         flingFired = true
         hideCheckIn()
-        if (up) library().open() else expandNotifications()
+        if (up) openLibrary() else expandNotifications()
         return true
     }
 

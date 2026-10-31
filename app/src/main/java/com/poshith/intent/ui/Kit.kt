@@ -80,8 +80,9 @@ object Theme {
     fun apply(a: Activity) {
         p = resolve(a)
         val w = a.window
-        w.setBackgroundDrawable(ColorDrawable(p.bg))
-        legacyBars(w)
+        val base = a as? BaseActivity
+        w.setBackgroundDrawable(ColorDrawable(base?.windowColor() ?: p.bg))
+        legacyBars(w, base?.barsOnDark() ?: p.dark)
         if (Build.VERSION.SDK_INT >= 30) {
             w.setDecorFitsSystemWindows(false)
             barIcons(a)
@@ -91,20 +92,35 @@ object Theme {
     /** Dark icons on a light screen and the other way round. Called again once the window is attached. */
     fun barIcons(a: Activity) {
         if (Build.VERSION.SDK_INT < 30) return
+        val dark = (a as? BaseActivity)?.barsOnDark() ?: p.dark
         val light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
         // Window.getInsetsController() throws until the decor view exists; asking the decor view creates it.
-        a.window.decorView.windowInsetsController?.setSystemBarsAppearance(if (p.dark) 0 else light, light)
+        a.window.decorView.windowInsetsController?.setSystemBarsAppearance(if (dark) 0 else light, light)
     }
 
     @Suppress("DEPRECATION")
-    private fun legacyBars(w: android.view.Window) {
+    private fun legacyBars(w: android.view.Window, dark: Boolean) {
         w.statusBarColor = Color.TRANSPARENT
         w.navigationBarColor = Color.TRANSPARENT
         if (Build.VERSION.SDK_INT < 30) {
             var f = View.SYSTEM_UI_FLAG_LAYOUT_STABLE or View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN or View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION
-            if (!p.dark) f = f or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+            if (!dark) f = f or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
             w.decorView.systemUiVisibility = f
         }
+    }
+}
+
+/** Your wallpaper, read only for its brightness, so text on the home screen stays readable. */
+object Wallpaper {
+    /** True if the wallpaper is light enough for dark text. */
+    fun isLight(ctx: Context): Boolean {
+        if (Build.VERSION.SDK_INT < 27) return false
+        return try {
+            val c = android.app.WallpaperManager.getInstance(ctx).getWallpaperColors(android.app.WallpaperManager.FLAG_SYSTEM)
+                ?: return false
+            if (Build.VERSION.SDK_INT >= 31) (c.colorHints and android.app.WallpaperColors.HINT_SUPPORTS_DARK_TEXT) != 0
+            else c.primaryColor.luminance() > 0.5f
+        } catch (_: Exception) { false }
     }
 }
 
@@ -236,7 +252,7 @@ fun styleButton(b: TextView, kind: Kind, enabled: Boolean) {
 }
 
 /** A selectable pill. */
-class Chip(ctx: Context, label: String) : TextView(ctx) {
+class Chip(ctx: Context, label: String, private val pal: Palette = P) : TextView(ctx) {
     var on = false
         set(v) { field = v; restyle() }
 
@@ -254,9 +270,9 @@ class Chip(ctx: Context, label: String) : TextView(ctx) {
 
     private fun restyle() {
         val r = context.dp(22).toFloat()
-        background = if (on) ripple(rounded(P.accentSoft, r, P.accent, context.dp(1.2f)), r)
-        else ripple(rounded(Color.TRANSPARENT, r, P.line, context.dp(1f)), r)
-        setTextColor(if (on) P.text else P.text2)
+        background = if (on) ripple(rounded(pal.accentSoft, r, pal.accent, context.dp(1.2f)), r)
+        else ripple(rounded(Color.TRANSPARENT, r, pal.line, context.dp(1f)), r)
+        setTextColor(if (on) pal.text else pal.text2)
     }
 }
 
@@ -401,13 +417,18 @@ abstract class BaseActivity : Activity() {
     protected var recreating = false
         private set
 
+    /** The window's background: the theme color. The home screen shows your wallpaper instead. */
+    open fun windowColor(): Int = P.bg
+    /** True when the status and navigation bar icons sit on something dark (so they should be light). */
+    open fun barsOnDark(): Boolean = P.dark
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Store.init(this)
         Theme.apply(this)
         builtWith = P
         host = FrameLayout(this)
-        host.setBackgroundColor(P.bg)
+        host.setBackgroundColor(windowColor())
         host.setOnApplyWindowInsetsListener { _, ins ->
             bars = readBars(ins)
             barListeners.toList().forEach { it(bars) }

@@ -48,6 +48,7 @@ swipe() { # x1 y1 x2 y2 in percent of the screen
 }
 
 adb shell getprop ro.build.version.release > "$OUT/android.txt"
+[ "${NIGHT:-no}" = "yes" ] && adb shell cmd uimode night yes > /dev/null 2>&1
 adb install -r -g "$APK" > "$OUT/install.txt" 2>&1
 cat "$OUT/install.txt"
 adb logcat -c
@@ -112,6 +113,14 @@ adb shell input keyevent KEYCODE_SLEEP; sleep 2
 adb shell input keyevent KEYCODE_WAKEUP; sleep 1
 adb shell wm dismiss-keyguard; sleep 1
 record unlock-check-in
+
+# Basic phone: only essentials on the home screen, and swiping up must not open search
+adb shell input keyevent KEYCODE_HOME
+tap "Focus";              sleep 1
+tap "Turn on basic phone"
+record basic-on
+swipe 50 80 50 25
+record basic-swipe-up
 
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1
 if crashed; then echo "CRASH:"; cat "$OUT/crash.txt"; fi

@@ -533,6 +533,16 @@ class SettingsActivity : BaseActivity() {
 
     private fun pageAppearance() {
         header("Appearance")
+        add(sectionTitle("Home screen background"))
+        val bg = Flow(this).apply { setPadding(dp(24), dp(4), dp(24), dp(4)) }
+        for ((v, label) in listOf(true to "Your wallpaper", false to "Plain")) {
+            val c = Chip(this, label); c.on = Store.wallpaper == v
+            c.setOnClickListener { it.tick(); Store.wallpaper = v; render() }
+            bg.addView(c)
+        }
+        add(bg)
+        add(paragraph("On your wallpaper, the words turn dark or light to stay easy to read. Change the wallpaper itself in your phone's settings.", 14f, P.text3))
+        add(toggleRow("Status bar on the home screen", "Off for a calmer screen. Swipe down still opens notifications.", Store.statusBar) { Store.statusBar = it })
         add(sectionTitle("Theme"))
         val themes = listOf("system" to "Follow system", "dark" to "Dark", "light" to "Light")
         val tf = Flow(this).apply { setPadding(dp(24), dp(4), dp(24), dp(10)) }

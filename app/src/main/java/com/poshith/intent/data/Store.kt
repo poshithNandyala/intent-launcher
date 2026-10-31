@@ -56,6 +56,10 @@ object Store {
     var doubleTapLock: Boolean get() = bool("double_tap_lock", true); set(v) = putB("double_tap_lock", v)
     var swipeLeftKey: String get() = str("swipe_left"); set(v) = put("swipe_left", v)
     var swipeRightMind: Boolean get() = bool("swipe_right_mind", true); set(v) = putB("swipe_right_mind", v)
+    /** The home screen sits on your own wallpaper (default), or on a plain background. */
+    var wallpaper: Boolean get() = bool("wallpaper", true); set(v) = putB("wallpaper", v)
+    /** Show the status bar on the home screen. */
+    var statusBar: Boolean get() = bool("status_bar", true); set(v) = putB("status_bar", v)
 
     // ------------------------------------------------------------------ home apps
     const val MAX_HOME = 7
