@@ -85,7 +85,9 @@ object Theme {
         if (Build.VERSION.SDK_INT >= 30) {
             w.setDecorFitsSystemWindows(false)
             val light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-            w.insetsController?.setSystemBarsAppearance(if (p.dark) 0 else light, light)
+            // Window.getInsetsController() crashes until the decor view exists; asking the decor view
+            // creates it first.
+            w.decorView.windowInsetsController?.setSystemBarsAppearance(if (p.dark) 0 else light, light)
         }
     }
 
@@ -389,9 +391,9 @@ abstract class BaseActivity : Activity() {
     private var backCallback: Any? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
         Store.init(this)
         Theme.apply(this)
-        super.onCreate(savedInstanceState)
         host = FrameLayout(this)
         host.setBackgroundColor(P.bg)
         host.setOnApplyWindowInsetsListener { _, ins ->

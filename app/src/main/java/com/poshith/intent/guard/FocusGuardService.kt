@@ -76,7 +76,7 @@ class FocusGuardService : AccessibilityService() {
         running = true
         ignored = computeIgnored()
         val f = IntentFilter().apply { addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_USER_PRESENT) }
-        registerReceiver(screen, f)
+        com.poshith.intent.IntentApp.listen(this, screen, f)
     }
 
     private fun computeIgnored(): Set<String> {

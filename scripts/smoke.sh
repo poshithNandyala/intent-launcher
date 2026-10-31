@@ -62,4 +62,10 @@ tap "Focus";              record focus-sheet
 
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1
 if crashed; then echo "CRASH:"; cat "$OUT/crash.txt"; fi
+
+# The safety net: a forced crash must show Intent's own error screen, not just close.
+adb shell am crash $PKG > /dev/null 2>&1
+sleep 4
+adb exec-out screencap -p > "$OUT/99-crash-screen.png" 2>/dev/null
+python3 scripts/ui.py texts > "$OUT/99-crash-screen.txt" 2>&1
 exit 0

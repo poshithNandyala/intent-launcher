@@ -101,6 +101,15 @@
             android:label="@string/settings_label"
             android:windowSoftInputMode="adjustResize|stateHidden" />
 
+        <!-- Shown if Intent ever crashes: the details, plus a way back to another home app. Own process. -->
+        <activity
+            android:name=".CrashActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:process=":crash"
+            android:taskAffinity="com.poshith.intent.crash" />
+
         <!-- Optional "Focus Guard". Off until you turn it on. It only learns WHICH app is in front
              (its package name) so it can show your pause screen and end the sessions you chose.
              canRetrieveWindowContent=false: it cannot read what is on your screen. -->
