@@ -50,13 +50,24 @@ class FocusGuardService : AccessibilityService() {
 
         /** The pause screen let a session start: if the app doesn't report itself, assume it's in front. */
         fun sessionStarted(pkg: String) { instance?.expect(pkg) }
+
+        private val notNowAt = HashMap<String, Long>()
+
+        /** "Not now" means not now: if the app pops back up within a few seconds (apps that open through
+         *  a splash screen relaunch themselves), it's sent home again without asking twice. */
+        fun saidNotNow(pkg: String) { synchronized(notNowAt) { notNowAt[pkg] = SystemClock.elapsedRealtime() } }
+        private fun justSaidNotNow(pkg: String): Boolean =
+            synchronized(notNowAt) { SystemClock.elapsedRealtime() - (notNowAt[pkg] ?: -NOT_NOW_MS) < NOT_NOW_MS }
+        private const val NOT_NOW_MS = 4_000L
     }
 
     private val h = Handler(Looper.getMainLooper())
     private var current = HOME
     private var beforeOff = HOME
     private var timing: String? = null
-    private val lastGate = HashMap<String, Long>()
+    /** The app whose pause screen is on its way (started, not yet in front), and when. */
+    private var gatePending: String? = null
+    private var gatePendingAt = 0L
     private var ignored: Set<String> = setOf("com.android.systemui")
     private val expireRunnable = Runnable { onExpire() }
 
@@ -94,7 +105,7 @@ class FocusGuardService : AccessibilityService() {
         val cls = e.className?.toString() ?: ""
         val next = if (pkg == packageName) {
             when (cls) {
-                GateActivity::class.java.name -> GATE
+                GateActivity::class.java.name -> { gatePending = null; GATE }
                 TimeUpActivity::class.java.name -> TIMEUP
                 HomeActivity::class.java.name -> HOME
                 else -> if (cls.startsWith("com.poshith.intent.")) SELF else return
@@ -129,14 +140,17 @@ class FocusGuardService : AccessibilityService() {
                     scheduleExpiry(pkg)
                 }
             }
-            else -> showGate(pkg)
+            else -> if (justSaidNotNow(pkg)) performGlobalAction(GLOBAL_ACTION_HOME) else showGate(pkg)
         }
     }
 
     private fun showGate(pkg: String) {
         val now = SystemClock.elapsedRealtime()
-        if (now - (lastGate[pkg] ?: 0L) < 1200) return
-        lastGate[pkg] = now
+        // Only skip if this exact pause is already on its way. Once it has been shown, an app that
+        // comes back in front (a splash screen opening the real app) gets the pause again.
+        if (gatePending == pkg && now - gatePendingAt < 1500) return
+        gatePending = pkg
+        gatePendingAt = now
         try {
             startActivity(GateActivity.intent(this, pkg, null, fromLauncher = false)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))

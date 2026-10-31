@@ -340,6 +340,7 @@ class GateActivity : BaseActivity() {
         if (leaving) return
         leaving = true
         Stats.notNow(pkg)
+        FocusGuardService.saidNotNow(pkg)
         val n = Stats.notNowToday()
         Store.flash = if (n == 1) "Not now. Nice." else "Not now. That's $n times today."
         if (!fromLauncher) Launch.goHome(this)

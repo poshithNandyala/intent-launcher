@@ -20,6 +20,18 @@ record() { # name
     echo "== $name (pid: $(adb shell pidof $PKG || echo none))"
 }
 tap() { python3 scripts/ui.py tap "$1" || echo "   (couldn't find \"$1\")"; }
+# Screenshot only. uiautomator suspends other accessibility services while it runs, so Focus Guard
+# steps are recorded without it.
+snap() {
+    n=$((n + 1))
+    local name
+    name=$(printf "%02d-%s" "$n" "$1")
+    sleep 3
+    adb exec-out screencap -p > "$OUT/$name.png" 2>/dev/null
+    adb shell dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity" > "$OUT/$name.txt" 2>&1
+    adb logcat -d -b crash > "$OUT/crash.txt" 2>&1
+    echo "== $name: $(cat "$OUT/$name.txt")"
+}
 size=$(adb shell wm size | grep -o '[0-9]*x[0-9]*' | tail -1)
 W=${size%x*}; H=${size#*x}
 swipe() { # x1 y1 x2 y2 in percent of the screen
@@ -50,7 +62,7 @@ record home
 # Main gestures
 swipe 50 80 50 25;  record library
 adb shell input text "set"; record search
-adb shell input keyevent KEYCODE_BACK; adb shell input keyevent KEYCODE_BACK
+adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK
 swipe 15 50 85 50;  record mind
 adb shell input keyevent KEYCODE_BACK
 adb shell input swipe "$((W / 2))" "$((H / 2))" "$((W / 2))" "$((H / 2))" 900
@@ -74,12 +86,16 @@ if adb shell pm list packages | grep -q "package:com.google.android.youtube"; th
     adb shell settings put secure accessibility_enabled 1
     sleep 3
     adb shell monkey -p com.google.android.youtube -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
-    record guard-pause
-    tap "Not now";        record guard-not-now
+    snap guard-pause
+    adb shell input keyevent KEYCODE_BACK       # back = "Not now" on the pause screen
+    snap guard-not-now
+    sleep 3
+    snap guard-stays-home
 fi
 
 # Intent as the real home app, and the check-in after unlocking
-adb shell cmd role add-role-holder --user 0 android.app.role.HOME $PKG > /dev/null 2>&1
+adb shell cmd role add-role-holder --user 0 android.app.role.HOME $PKG > /dev/null 2>&1 ||
+    adb shell cmd package set-home-activity $PKG/.HomeActivity > /dev/null 2>&1
 adb shell input keyevent KEYCODE_HOME
 record default-home
 adb shell input keyevent KEYCODE_SLEEP; sleep 2
