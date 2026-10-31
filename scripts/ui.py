@@ -20,8 +20,10 @@ def nodes():
     for _ in range(3):
         # Remove the last dump first: if this one fails, reading a stale file would describe an old screen.
         adb("shell", "rm", "-f", "/sdcard/ui.xml")
-        adb("shell", "uiautomator", "dump", "/sdcard/ui.xml")
+        r = adb("shell", "uiautomator", "dump", "/sdcard/ui.xml")
         raw = adb("shell", "cat", "/sdcard/ui.xml").stdout
+        if "<hierarchy" not in raw:
+            sys.stderr.write("(dump failed: " + (r.stdout + r.stderr).strip()[:200] + ")\n")
         if "<hierarchy" in raw:
             try:
                 return list(ET.fromstring(raw[raw.index("<hierarchy"):]).iter("node"))

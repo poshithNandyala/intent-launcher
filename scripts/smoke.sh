@@ -179,20 +179,11 @@ read -r hx hy < <(python3 scripts/ui.py coords "Hold to end the break" | head -1
 [ "$hx" -gt 0 ] && adb shell input swipe "$hx" "$hy" "$hx" "$hy" 3800
 record break-ended
 
-# Basic phone: only essentials on the home screen, and swiping up must not open search
-adb shell input keyevent KEYCODE_HOME
-tap "Focus";              sleep 1
-tap "Basic phone";        sleep 1
-tap "Turn on basic phone"
-record basic-on
-swipe 50 80 50 25
-record basic-swipe-up
-
 # Shorts and Reels: the Short you open plays; the first swipe to another one gets the pause, and
-# after "Watch 10 more", the 11th swipe gets it again. Focus Guard is off for this part.
+# after "Watch 10 more", the 11th swipe gets it again. Both guards on, as most people would have them.
 flick() { adb shell input swipe "$((W / 2))" "$((H * 70 / 100))" "$((W / 2))" "$((H * 40 / 100))" 300; }
 if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; then
-    adb shell settings put secure enabled_accessibility_services $PKG/$PKG.guard.ReelsGuardService
+    adb shell settings put secure enabled_accessibility_services $PKG/$PKG.guard.FocusGuardService:$PKG/$PKG.guard.ReelsGuardService
     adb shell settings put secure accessibility_enabled 1
     sleep 3
     adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
@@ -209,6 +200,15 @@ if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; 
     snap shorts-closed             # expected: Intent's home
     record home-after-shorts
 fi
+
+# Basic phone: only essentials on the home screen, and swiping up must not open search
+adb shell input keyevent KEYCODE_HOME
+tap "Focus";              sleep 1
+tap "Basic phone";        sleep 1
+tap "Turn on basic phone"
+record basic-on
+swipe 50 80 50 25
+record basic-swipe-up
 
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1
 if crashed; then echo "CRASH:"; cat "$OUT/crash.txt"; fi
