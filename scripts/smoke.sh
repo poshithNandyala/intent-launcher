@@ -89,6 +89,8 @@ adb shell input swipe "$((W / 2))" "$((H / 2))" "$((W / 2))" "$((H / 2))" 900
 record long-press
 tap "Settings";           record settings
 swipe 50 75 50 45;        record settings-scrolled
+tap "Shorts and Reels";   record reels-settings
+adb shell input keyevent KEYCODE_BACK
 adb shell input keyevent KEYCODE_BACK
 adb shell am start -W -n $PKG/.HomeActivity > /dev/null 2>&1
 tap "Focus";              record focus-sheet
