@@ -3,7 +3,7 @@
 An Android home screen that keeps your tools one tap away and puts a short, kind pause in front of the apps that pull you in.</p>
 
 <p align="center">
-  <a href="https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.0.0.apk"><b>⬇ Download the APK</b></a> ·
+  <a href="https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.0.1.apk"><b>⬇ Download the APK</b></a> ·
   <a href="docs/RESEARCH.md">The research</a> ·
   <a href="PRIVACY.md">Privacy</a>
 </p>
@@ -38,8 +38,8 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
 
 ## Install
 
-1. Download **[Intent-1.0.0.apk](https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.0.0.apk)** on your phone and open it. Allow "install unknown apps" for your browser if Android asks.
-   SHA-256 `791ad5105cc80d0c7f6c684f1bf11dfc66dfd95dbe5cee7f063960d07b000d3d`
+1. Download **[Intent-1.0.1.apk](https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.0.1.apk)** on your phone and open it. Allow "install unknown apps" for your browser if Android asks.
+   SHA-256 `fb2fa744a80d1c49ca3e2f59b2bf99fad667821181c6adb4f12299831f7fb8fe`
 2. Open Intent and follow the two-minute setup: choose your essentials, the apps that pull you in, and your if-then plan.
 3. **Make Intent your home app** when asked, or later in *Settings › Apps › Default apps › Home app*.
 4. Optional but recommended: **turn on Focus Guard** (*Settings › Accessibility › Intent · Focus Guard*).
@@ -57,7 +57,7 @@ Intent has **no internet permission**, so it cannot send anything anywhere. Ther
 
 ## How it decides
 
-Every way of opening an app (home screen, search, and with Focus Guard on, notifications, recents and links) goes through one function, [`Policy.decide`](app/src/main/java/com/poshith/intent/core/Policy.kt). It's pure Kotlin with [65 unit tests](app/src/test/java/com/poshith/intent/core/Tests.kt):
+Every way of opening an app (home screen, search, and with Focus Guard on, notifications, recents and links) goes through one function, [`Policy.decide`](app/src/main/java/com/poshith/intent/core/Policy.kt). It's pure Kotlin with [83 unit tests](app/src/test/java/com/poshith/intent/core/Tests.kt):
 
 ```
 protected app (phone, settings, keyboard…)  → open
