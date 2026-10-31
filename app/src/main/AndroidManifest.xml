@@ -1,0 +1,124 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Intent has NO internet permission. Nothing you do on your phone can leave it through this app.
+  The package name is set by Gradle (namespace) or injected by build.sh.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Swipe down on the home screen opens the notification shade (quick settings: Wi-Fi, Bluetooth, hotspot). -->
+    <uses-permission android:name="android.permission.EXPAND_STATUS_BAR" />
+    <!-- Optional, granted by the user in Settings: honest screen-time and unlock counts. Never leaves the phone. -->
+    <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
+    <!-- "Time's up" reminders when Focus Guard is off. Asked once, on Android 13+. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Lets the long-press menu offer "Uninstall". Android still asks you to confirm. -->
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- Only used to open your alarm list when you tap the clock. -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
+
+    <!-- Android 11+ package visibility: a launcher needs to see the apps it can launch, and the default tools. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.HOME" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.DIAL" />
+        </intent>
+        <intent>
+            <action android:name="android.media.action.STILL_IMAGE_CAMERA" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SHOW_ALARMS" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.SENDTO" />
+            <data android:scheme="smsto" />
+        </intent>
+        <intent>
+            <action android:name="android.view.InputMethod" />
+        </intent>
+    </queries>
+
+    <application
+        android:name=".IntentApp"
+        android:allowBackup="true"
+        android:enableOnBackInvokedCallback="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.Intent">
+
+        <activity
+            android:name=".HomeActivity"
+            android:clearTaskOnLaunch="true"
+            android:configChanges="keyboard|keyboardHidden|navigation|orientation|screenLayout|screenSize|smallestScreenSize"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:resumeWhilePausing="true"
+            android:stateNotNeeded="true"
+            android:taskAffinity=""
+            android:windowSoftInputMode="adjustResize|stateHidden">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- The pause screen in front of a mindful app. Its own task so it never mixes with the app behind it. -->
+        <activity
+            android:name=".GateActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.poshith.intent.gate"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+
+        <activity
+            android:name=".TimeUpActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.poshith.intent.gate" />
+
+        <activity
+            android:name=".OnboardingActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+
+        <activity
+            android:name=".SettingsActivity"
+            android:exported="false"
+            android:label="@string/settings_label"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+
+        <!-- Optional "Focus Guard". Off until you turn it on. It only learns WHICH app is in front
+             (its package name) so it can show your pause screen and end the sessions you chose.
+             canRetrieveWindowContent=false: it cannot read what is on your screen. -->
+        <service
+            android:name=".guard.FocusGuardService"
+            android:exported="false"
+            android:label="@string/guard_label"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/focus_guard" />
+        </service>
+
+        <receiver
+            android:name=".guard.ReminderReceiver"
+            android:exported="false" />
+    </application>
+</manifest>

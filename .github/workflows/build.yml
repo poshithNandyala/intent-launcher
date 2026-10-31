@@ -1,0 +1,81 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    name: Tests and APK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Cache build tools
+        uses: actions/cache@v4
+        with:
+          path: .tools
+          key: tools-${{ runner.os }}-${{ hashFiles('build.sh') }}
+
+      - name: Unit tests (rules engine)
+        run: ./build.sh test
+
+      - name: Release builds must use the release key
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          HAS_KEY: ${{ secrets.INTENT_KEYSTORE_B64 != '' && secrets.INTENT_KEY_PASS != '' }}
+        run: |
+          if [ "$HAS_KEY" != "true" ]; then
+            echo "::error::Set the INTENT_KEYSTORE_B64 and INTENT_KEY_PASS secrets. Updates only install over an app signed with the same key."
+            exit 1
+          fi
+
+      - name: Build signed APK
+        env:
+          INTENT_KEYSTORE_B64: ${{ secrets.INTENT_KEYSTORE_B64 }}
+          INTENT_KEY_PASS: ${{ secrets.INTENT_KEY_PASS }}
+        run: ./build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Intent-apk
+          path: out/Intent-*.apk
+          if-no-files-found: error
+
+      - name: Publish the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "Release $GITHUB_REF_NAME already exists; leaving its APK as it is."
+          else
+            gh release create "$GITHUB_REF_NAME" out/Intent-*.apk --title "Intent ${GITHUB_REF_NAME#v}" --generate-notes
+          fi
+
+  gradle:
+    name: Android Studio build (Gradle)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Assemble debug APK
+        run: ./gradlew assembleDebug --no-daemon

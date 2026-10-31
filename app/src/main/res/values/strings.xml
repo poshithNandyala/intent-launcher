@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Intent</string>
+    <string name="settings_label">Intent settings</string>
+    <string name="guard_label">Intent · Focus Guard</string>
+    <string name="guard_description">Focus Guard lets Intent show your pause screen even when an app you marked as mindful is opened from a notification or the recents screen, and end the sessions you chose (for example, 5 minutes of Instagram).\n\nTo do that it only learns which app is in front, by its package name. It cannot read what is on your screen, your messages, passwords or anything you type. Intent has no internet permission, so nothing ever leaves your phone.\n\nYou can turn it off here at any time. Double-tap to lock the screen also uses it.</string>
+</resources>
