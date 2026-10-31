@@ -84,11 +84,16 @@ object Theme {
         legacyBars(w)
         if (Build.VERSION.SDK_INT >= 30) {
             w.setDecorFitsSystemWindows(false)
-            val light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-            // Window.getInsetsController() crashes until the decor view exists; asking the decor view
-            // creates it first.
-            w.decorView.windowInsetsController?.setSystemBarsAppearance(if (p.dark) 0 else light, light)
+            barIcons(a)
         }
+    }
+
+    /** Dark icons on a light screen and the other way round. Called again once the window is attached. */
+    fun barIcons(a: Activity) {
+        if (Build.VERSION.SDK_INT < 30) return
+        val light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+        // Window.getInsetsController() throws until the decor view exists; asking the decor view creates it.
+        a.window.decorView.windowInsetsController?.setSystemBarsAppearance(if (p.dark) 0 else light, light)
     }
 
     @Suppress("DEPRECATION")
@@ -407,6 +412,11 @@ abstract class BaseActivity : Activity() {
             onBackInvokedDispatcher.registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb)
             backCallback = cb
         }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        Theme.barIcons(this)
     }
 
     override fun onDestroy() {

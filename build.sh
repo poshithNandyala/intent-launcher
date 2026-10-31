@@ -6,8 +6,8 @@
 #
 # First run downloads the tools into .tools/ (all from GitHub, ~150 MB):
 #   Kotlin compiler (JetBrains/kotlin), bundletool (google/bundletool: provides aapt2, R8/D8 and apksig)
-#   and the public Android 16 SDK jar (Sable/android-platforms).
-# If $ANDROID_HOME is set, its aapt2 and android.jar are used instead.
+#   and the public Android 14 SDK jar (Sable/android-platforms).
+# If $ANDROID_HOME has platforms/android-34, its android.jar is used instead.
 #
 # Signing key: keystore/intent.p12 (+ keystore/password.txt), created on first build.
 # BACK THEM UP and never commit them: Android only installs an update if it is signed with the same key.
@@ -41,26 +41,21 @@ fetch() { # url dest
 # ---------------------------------------------------------------- tools
 echo "[0/7] tools"
 mkdir -p "$TOOLS"
+# Code and resources are compiled against the Android 14 (API 34) SDK jar, even though the app
+# targets Android 16: the bundled R8 predates Android 15 and, given a newer jar, can rewrite library
+# calls to use types that older phones don't have (java.util.SequencedCollection crashed Android 11).
+# Nothing in Intent needs an API newer than 34 (compiling against 34 enforces it).
+COMPILE_SDK=34
 SDK_JAR=${SDK_JAR:-}
 AAPT2=${AAPT2:-}
-if [ -n "${ANDROID_HOME:-}" ] && [ -f "$ANDROID_HOME/platforms/android-$TARGET_SDK/android.jar" ]; then
-    SDK_JAR=${SDK_JAR:-$ANDROID_HOME/platforms/android-$TARGET_SDK/android.jar}
-    BTV=$(ls "$ANDROID_HOME/build-tools" 2>/dev/null | sort -V | tail -1 || true)
-    [ -n "$BTV" ] && AAPT2=${AAPT2:-$ANDROID_HOME/build-tools/$BTV/aapt2}
+if [ -z "$SDK_JAR" ] && [ -n "${ANDROID_HOME:-}" ] && [ -f "$ANDROID_HOME/platforms/android-$COMPILE_SDK/android.jar" ]; then
+    SDK_JAR=$ANDROID_HOME/platforms/android-$COMPILE_SDK/android.jar
 fi
 if [ -z "$SDK_JAR" ]; then
-    SDK_JAR=$TOOLS/android-$TARGET_SDK.jar
-    fetch "https://raw.githubusercontent.com/Sable/android-platforms/master/android-$TARGET_SDK/android.jar" "$SDK_JAR"
+    SDK_JAR=$TOOLS/android-$COMPILE_SDK.jar
+    fetch "https://raw.githubusercontent.com/Sable/android-platforms/master/android-$COMPILE_SDK/android.jar" "$SDK_JAR"
 fi
-# The aapt2 shipped inside bundletool can't read Android 15+ resource tables, so resources are linked
-# against the Android 14 jar (all attributes Intent uses exist there). Code still compiles against 16.
-RES_JAR=${RES_JAR:-}
-if [ -z "$RES_JAR" ]; then
-    if [ -n "$AAPT2" ]; then RES_JAR=$SDK_JAR; else
-        RES_JAR=$TOOLS/android-34.jar
-        fetch "https://raw.githubusercontent.com/Sable/android-platforms/master/android-34/android.jar" "$RES_JAR"
-    fi
-fi
+RES_JAR=$SDK_JAR
 BUNDLETOOL=$TOOLS/bundletool-$BUNDLETOOL_VERSION.jar
 fetch "https://github.com/google/bundletool/releases/download/$BUNDLETOOL_VERSION/bundletool-all-$BUNDLETOOL_VERSION.jar" "$BUNDLETOOL"
 if [ -z "$AAPT2" ]; then
@@ -134,7 +129,7 @@ test -f "$OUT/classes/com/poshith/intent/HomeActivity.class" || { echo "Kotlin c
 echo "[4/7] dex (R8 shrinks the Kotlin runtime to what the app uses)"
 if [ "${NO_R8:-}" != "1" ]; then
     java -cp "$BUNDLETOOL" com.android.tools.r8.R8 --release --min-api $MIN_SDK \
-        --lib "$SDK_JAR" --pg-conf app/proguard-rules.pro --pg-conf "$OUT/aapt-rules.pro" \
+        --lib "$SDK_JAR" --pg-conf app/proguard-rules.pro --pg-conf buildtools/r8-legacy.pro --pg-conf "$OUT/aapt-rules.pro" \
         --output "$OUT/dex" "$OUT/app.jar" "$STDLIB" > "$OUT/r8.log" 2>&1 || true
 fi
 if [ ! -f "$OUT/dex/classes.dex" ]; then

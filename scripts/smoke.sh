@@ -59,6 +59,33 @@ tap "Settings";           record settings
 adb shell input keyevent KEYCODE_BACK
 adb shell am start -W -n $PKG/.HomeActivity > /dev/null 2>&1
 tap "Focus";              record focus-sheet
+adb shell input keyevent KEYCODE_BACK
+
+# The pause, opened from Intent's search (YouTube was suggested as a pull app during setup)
+if adb shell pm list packages | grep -q "package:com.google.android.youtube"; then
+    swipe 50 80 50 25
+    adb shell input text "YouTube"; sleep 1
+    tap "YouTube";        record pause
+    sleep 6;              record pause-after-breath
+    tap "Not now";        record after-not-now
+
+    # Focus Guard: the same app opened from outside Intent (like a notification) still gets the pause
+    adb shell settings put secure enabled_accessibility_services $PKG/$PKG.guard.FocusGuardService
+    adb shell settings put secure accessibility_enabled 1
+    sleep 3
+    adb shell monkey -p com.google.android.youtube -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
+    record guard-pause
+    tap "Not now";        record guard-not-now
+fi
+
+# Intent as the real home app, and the check-in after unlocking
+adb shell cmd role add-role-holder --user 0 android.app.role.HOME $PKG > /dev/null 2>&1
+adb shell input keyevent KEYCODE_HOME
+record default-home
+adb shell input keyevent KEYCODE_SLEEP; sleep 2
+adb shell input keyevent KEYCODE_WAKEUP; sleep 1
+adb shell wm dismiss-keyguard; sleep 1
+record unlock-check-in
 
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1
 if crashed; then echo "CRASH:"; cat "$OUT/crash.txt"; fi

@@ -120,35 +120,41 @@ class OnboardingActivity : BaseActivity() {
 
     // ---------------------------------------------------------------------------------- pages
 
-    private fun welcome(): View {
+    /** Scrolling content with the buttons pinned below it, so they're reachable on any screen and font size. */
+    private fun pinned(content: LinearLayout, actions: View): View {
         val root = vbox()
-        root.addView(vflex())
-        root.addView(text("Intent", 52f, P.text, Fonts.light(this)).apply { setPadding(dp(28), 0, dp(28), 0) })
-        root.addView(text("Open your phone on purpose.", 22f, P.text2, Fonts.regular(this)).apply { setPadding(dp(28), dp(4), dp(28), dp(26)) })
-        fun fact(s: String) = root.addView(text(s, 16f, P.text2).apply { setLineSpacing(0f, 1.28f); setPadding(dp(28), dp(8), dp(28), dp(8)) }, lp())
+        root.addView(scroller(content), lp(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
+        root.addView(actions, lp().apply { topMargin = dp(10) })
+        return root
+    }
+
+    private fun welcome(): View {
+        val content = vbox()
+        content.addView(vflex())
+        content.addView(text("Intent", 52f, P.text, Fonts.light(this)).apply { setPadding(dp(28), dp(8), dp(28), 0) })
+        content.addView(text("Open your phone on purpose.", 22f, P.text2, Fonts.regular(this)).apply { setPadding(dp(28), dp(4), dp(28), dp(26)) })
+        fun fact(s: String) = content.addView(text(s, 16f, P.text2).apply { setLineSpacing(0f, 1.28f); setPadding(dp(28), dp(8), dp(28), dp(8)) }, lp())
         fact("Most of the time we pick up our phones out of habit, not because something needs us.")
         fact("We check about twice as often as we think.")
         fact("A short pause, with an easy way out, cut app openings by more than half in a large study.")
-        root.addView(text("Intent keeps your tools one tap away and puts that pause in front of the apps that pull you. Calls, messages, payments, maps, Wi-Fi, Bluetooth and hotspot keep working exactly as before.", 15f, P.text3).apply {
-            setLineSpacing(0f, 1.28f); setPadding(dp(28), dp(14), dp(28), 0)
+        content.addView(text("Intent keeps your tools one tap away and puts that pause in front of the apps that pull you. Calls, messages, payments, maps, Wi-Fi, Bluetooth and hotspot keep working exactly as before.", 15f, P.text3).apply {
+            setLineSpacing(0f, 1.28f); setPadding(dp(28), dp(14), dp(28), dp(8))
         }, lp())
-        root.addView(vflex())
+        content.addView(vflex())
         val actions = vbox().apply { setPadding(dp(24), 0, dp(24), 0) }
         actions.addView(button("Begin", Kind.PRIMARY) { next() }, lp())
         actions.addView(text("About two minutes. Nothing leaves your phone: Intent has no internet access.", 13.5f, P.text3).apply {
             gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0)
         }, lp())
-        root.addView(actions, lp())
-        return root
+        return pinned(content, actions)
     }
 
     private fun defaultTools(): List<String> {
         val out = ArrayList<String>()
+        // Phone and Camera are already at the bottom of the home screen, so they aren't picked twice.
         val pkgs = listOf(
-            Launch.resolve(this, Intent(Intent.ACTION_DIAL)),
             Launch.resolve(this, Intent(Intent.ACTION_SENDTO, Uri.parse("smsto:"))),
             "com.whatsapp",
-            Launch.resolve(this, Intent(MediaStore.INTENT_ACTION_STILL_IMAGE_CAMERA)),
             "com.google.android.apps.maps",
         ).filterNotNull() + Catalog.TOOLS.filter { it in Catalog.ESSENTIAL_HINT }
         for (p in pkgs) {
@@ -167,7 +173,7 @@ class OnboardingActivity : BaseActivity() {
             .forEach { p -> Apps.byPkg(p)?.let { suggested += it.key } }
         Catalog.TOOLS.forEach { p -> Apps.byPkg(p)?.let { suggested += it.key } }
         val picker = AppPicker(this, "Your essentials",
-            "The few tools you use every day: they become your home screen and always open instantly, even during focus. Up to ${Store.MAX_HOME}; four or five is calmest.",
+            "The few tools you use every day: they become your home screen and always open instantly, even during focus. Up to ${Store.MAX_HOME}; four or five is calmest. Phone and Camera are always at the bottom.",
             essentials, byPackage = false, max = Store.MAX_HOME, suggested = suggested, showDone = false,
             onChange = { essentials = it }) { }
         val root = vbox()
@@ -294,14 +300,14 @@ class OnboardingActivity : BaseActivity() {
     }
 
     private fun donePage(): View {
-        val root = vbox()
-        root.addView(vflex())
-        root.addView(text("You're set.", 40f, P.text, Fonts.light(this)).apply { setPadding(dp(28), 0, dp(28), dp(18)) })
+        val content = vbox()
+        content.addView(vflex())
+        content.addView(text("You're set.", 40f, P.text, Fonts.light(this)).apply { setPadding(dp(28), dp(8), dp(28), dp(18)) })
         fun how(a: String, b: String) {
             val r = hbox(Gravity.TOP).apply { setPadding(dp(28), dp(8), dp(28), dp(8)) }
             r.addView(text(a, 15f, P.text, Fonts.medium(this)), lp(dp(118)))
             r.addView(text(b, 15f, P.text2).apply { setLineSpacing(0f, 1.2f) }, lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            root.addView(r, lp())
+            content.addView(r, lp())
         }
         how("Swipe up", "Find any app by typing its name")
         how("Swipe right", "The Mind library: short, sourced lessons")
@@ -309,13 +315,12 @@ class OnboardingActivity : BaseActivity() {
         how("Long-press", "Edit apps, rules, focus and settings")
         how("Double-tap", "Lock the phone (with Focus Guard)")
         how("Focus", "Bottom of the screen: deep work or a real break")
-        root.addView(vflex())
+        content.addView(vflex())
         val actions = vbox().apply { setPadding(dp(24), 0, dp(24), 0) }
         actions.addView(button("Start using Intent", Kind.PRIMARY) {
             Store.onboarded = true
             if (Launch.isDefaultHome(this) || !Launch.requestHome(this, 42)) finish()
         }, lp())
-        root.addView(actions, lp())
-        return root
+        return pinned(content, actions)
     }
 }

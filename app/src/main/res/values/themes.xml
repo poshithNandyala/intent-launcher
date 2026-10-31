@@ -1,8 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Colors and system bars are set in code (ui/Kit.kt) so the light/dark choice in Settings applies instantly.
-         The window background follows the system theme so the very first frame never flashes the wrong color. -->
-    <style name="Theme.Intent" parent="@android:style/Theme.Material.NoActionBar">
+    <!-- Light system theme: dark status and navigation bar icons. values-night swaps the parent.
+         Colors are set again in code (ui/Kit.kt) so the light/dark choice in Settings applies instantly. -->
+    <style name="Platform.Theme.Intent" parent="@android:style/Theme.Material.Light.NoActionBar">
+        <item name="android:windowLightStatusBar">true</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+
+    <style name="Base.Theme.Intent" parent="Platform.Theme.Intent">
         <item name="android:windowBackground">@color/window_bg</item>
         <item name="android:colorAccent">@color/accent</item>
         <item name="android:colorControlActivated">@color/accent</item>
@@ -13,4 +18,6 @@
         <item name="android:windowContentOverlay">@null</item>
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
+
+    <style name="Theme.Intent" parent="Base.Theme.Intent" />
 </resources>

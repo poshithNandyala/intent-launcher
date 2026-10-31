@@ -72,6 +72,7 @@ class HomeActivity : BaseActivity() {
     private lateinit var status: TextView
     private lateinit var appsBox: LinearLayout
     private lateinit var bottom: LinearLayout
+    private var midScroll: android.widget.ScrollView? = null
     private var library: Library? = null
     private var mind: MindPanel? = null
 
@@ -214,10 +215,20 @@ class HomeActivity : BaseActivity() {
         statsLine = text("", scale(13.5f), P.text3).apply { gravity = g; setPadding(0, dp(10), 0, 0); visibility = View.GONE }
         page.addView(statsLine, lp())
 
-        page.addView(vflex())
+        // Everything below the clock sits at the bottom, near your thumb. It only scrolls if it can't
+        // fit (seven apps on a small phone, or very large system text), so nothing is ever cut off.
+        val mid = vbox(Gravity.BOTTOM or g)
+        mid.setOnTouchListener { _, e -> taps.onTouchEvent(e); true }
+        midScroll = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+            overScrollMode = View.OVER_SCROLL_NEVER
+            addView(mid, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        }
+        page.addView(midScroll, lp(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
         checkIn = vbox(g).apply { visibility = View.GONE }
-        page.addView(checkIn, lp().apply { bottomMargin = dp(18) })
+        mid.addView(checkIn, lp().apply { bottomMargin = dp(18); topMargin = dp(12) })
 
         oneThing = text("", scale(16f), P.text2).apply {
             gravity = g
@@ -226,7 +237,7 @@ class HomeActivity : BaseActivity() {
             background = ripple(null, dp(10).toFloat())
             setOnClickListener { it.tick(); oneThingSheet() }
         }
-        page.addView(oneThing, lp())
+        mid.addView(oneThing, lp())
 
         status = text("", scale(15f), P.accent, Fonts.medium(this)).apply {
             gravity = g
@@ -236,10 +247,10 @@ class HomeActivity : BaseActivity() {
             background = ripple(null, dp(10).toFloat())
             setOnClickListener { it.tick(); statusSheet() }
         }
-        page.addView(status, lp())
+        mid.addView(status, lp())
 
         appsBox = vbox(g)
-        page.addView(appsBox, lp())
+        mid.addView(appsBox, lp())
 
         bottom = hbox(Gravity.CENTER_VERTICAL)
         bottom.addView(bottomItem("Phone") { Launch.dialer(this) }, lp(0, dp(52), 1f))
@@ -499,6 +510,8 @@ class HomeActivity : BaseActivity() {
             return true
         }
         if (mind?.isOpen == true || hasBackLayers()) return false
+        // On a crowded screen the apps scroll first; the gesture works once they can't.
+        if (midScroll?.canScrollVertically(if (up) 1 else -1) == true) return false
         flingFired = true
         hideCheckIn()
         if (up) library().open() else expandNotifications()
