@@ -61,6 +61,8 @@ adb install -r -g "$APK" > "$OUT/install.txt" 2>&1
 # YouTube asks for notifications on first launch; answer it up front so the dialog doesn't get in the way.
 adb shell pm grant com.google.android.youtube android.permission.POST_NOTIFICATIONS > /dev/null 2>&1
 cat "$OUT/install.txt"
+# A stand-in for YouTube Shorts (the emulator's YouTube is too old to play them): test fixture only.
+{ bash scripts/build-fake-feed.sh && adb install -r out/fake-feed.apk; } > "$OUT/fake-feed.txt" 2>&1 || echo "   (couldn't build the Shorts fixture)"
 adb logcat -c
 adb logcat -b crash -c
 
@@ -186,32 +188,26 @@ record basic-on
 swipe 50 80 50 25
 record basic-swipe-up
 
-# Shorts and Reels: the Short you open plays; the first swipe to another one gets the pause.
-# Focus Guard is off for this part, so the Short opens straight from its link.
-if adb shell pm list packages | grep -q "package:com.google.android.youtube"; then
+# Shorts and Reels: the Short you open plays; the first swipe to another one gets the pause, and
+# after "Watch 10 more", the 11th swipe gets it again. Focus Guard is off for this part.
+flick() { adb shell input swipe "$((W / 2))" "$((H * 70 / 100))" "$((W / 2))" "$((H * 40 / 100))" 300; }
+if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; then
     adb shell settings put secure enabled_accessibility_services $PKG/$PKG.guard.ReelsGuardService
     adb shell settings put secure accessibility_enabled 1
     sleep 3
-    adb shell am start -a android.intent.action.VIEW -d "https://www.youtube.com/shorts/j7EwauEtGgs" -p com.google.android.youtube > "$OUT/shorts-start.txt" 2>&1
-    sleep 12
-    # If the link didn't open in YouTube, use YouTube's own Shorts tab.
-    if ! top | grep -q youtube; then
-        adb shell monkey -p com.google.android.youtube -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
-        sleep 10
-        read -r sx sy < <(python3 scripts/ui.py last "Shorts")
-        [ "$sx" -gt 0 ] && adb shell input tap "$sx" "$sy"
-        sleep 8
-    fi
-    # The emulator's YouTube is old and may ask to update first: answer that.
-    mapfile -t pts < <(python3 scripts/ui.py coords "No thanks" "Not now" "Later" "Dismiss" "Skip")
-    for p in "${pts[@]}"; do read -r x y <<< "$p"; if [ "$x" -gt 0 ]; then adb shell input tap "$x" "$y"; break; fi; done
-    record shorts-open
-    sleep 5 # the guard comes back after the screen read
-    swipe 50 72 50 22
-    snap shorts-first-swipe    # expected: ReelsActivity in front
+    adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
+    sleep 3
+    flick
+    snap shorts-first-swipe        # expected: ReelsActivity, "Was that the one you came for?"
     record shorts-pause
-    tap "Leave Shorts"
-    snap shorts-left
+    tap "Watch 10 more"
+    sleep 4 # the guard comes back after the screen read
+    for _ in $(seq 1 11); do flick; sleep 2.5; done
+    snap shorts-after-ten          # expected: ReelsActivity again, "That's 12 in a row"
+    record shorts-pause-again
+    tap "Close"
+    snap shorts-closed             # expected: Intent's home
+    record home-after-shorts
 fi
 
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1

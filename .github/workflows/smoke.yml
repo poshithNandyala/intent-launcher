@@ -10,6 +10,11 @@ on:
 permissions:
   contents: write
 
+# A newer push replaces an older run (they would otherwise race to publish the same branches).
+concurrency:
+  group: smoke-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   emulator:
     name: Emulator (API ${{ matrix.api }})

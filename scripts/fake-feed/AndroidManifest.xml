@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Test fixture for Intent's emulator smoke test, never shipped. The emulator's YouTube is too old to
+     play Shorts, so this stands in: a full-screen vertical feed whose scroller has the same name as
+     YouTube's Shorts pager (reel_recycler). It uses the package name of a YouTube build Intent already
+     recognises, so the Shorts & Reels guard treats it like YouTube. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="app.revanced.android.youtube">
+    <application android:label="Feed fixture" android:allowBackup="false">
+        <activity android:name=".Feed" android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>
