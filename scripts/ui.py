@@ -57,6 +57,15 @@ def main():
             x, y = found.get(label, (-1, -1))
             print(x, y)
         return 0
+    if cmd == "last":  # "x y" of the LAST element matching the label (a bottom tab rather than a header)
+        hit = None
+        for n in nodes():
+            t = n.get("text") or n.get("content-desc") or ""
+            if t == sys.argv[2] or t.startswith(sys.argv[2]):
+                hit = n
+        x, y = center(hit) if hit is not None else (-1, -1)
+        print(x, y)
+        return 0
     if cmd == "dismiss":  # a system "isn't responding" / "keeps stopping" dialog over everything: answer it
         ns = nodes()
         if any("isn't responding" in (n.get("text") or "") or "keeps stopping" in (n.get("text") or "") for n in ns):

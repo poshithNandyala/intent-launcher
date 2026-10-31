@@ -64,6 +64,7 @@ class ReelsGuardService : AccessibilityService() {
 
     private val h = Handler(Looper.getMainLooper())
     private var askedAt = 0L
+    private val lastIndex = HashMap<Feed, Int>()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -84,6 +85,12 @@ class ReelsGuardService : AccessibilityService() {
         src.getBoundsInScreen(r)
         if (r.height() < resources.displayMetrics.heightPixels / 2) return
         if (!FeedIds.isFeedSwipe(feed, idPath(src))) return
+        // Android 8 doesn't say how far a view moved; there, a swipe is the pager's first visible item changing.
+        if (Build.VERSION.SDK_INT < 28 && e.fromIndex >= 0) {
+            val last = lastIndex[feed]
+            lastIndex[feed] = e.fromIndex
+            if (last == null || last == e.fromIndex) return
+        }
 
         val now = SystemClock.elapsedRealtime()
         val ask = synchronized(sittings) {

@@ -190,8 +190,16 @@ if adb shell pm list packages | grep -q "package:com.google.android.youtube"; th
     adb shell settings put secure enabled_accessibility_services $PKG/$PKG.guard.ReelsGuardService
     adb shell settings put secure accessibility_enabled 1
     sleep 3
-    adb shell am start -a android.intent.action.VIEW -d "https://www.youtube.com/shorts/j7EwauEtGgs" com.google.android.youtube > /dev/null 2>&1
+    adb shell am start -a android.intent.action.VIEW -d "https://www.youtube.com/shorts/j7EwauEtGgs" -p com.google.android.youtube > "$OUT/shorts-start.txt" 2>&1
     sleep 12
+    # If the link didn't open in YouTube, use YouTube's own Shorts tab.
+    if ! top | grep -q youtube; then
+        adb shell monkey -p com.google.android.youtube -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
+        sleep 10
+        read -r sx sy < <(python3 scripts/ui.py last "Shorts")
+        [ "$sx" -gt 0 ] && adb shell input tap "$sx" "$sy"
+        sleep 8
+    fi
     # The emulator's YouTube is old and may ask to update first: answer that.
     mapfile -t pts < <(python3 scripts/ui.py coords "No thanks" "Not now" "Later" "Dismiss" "Skip")
     for p in "${pts[@]}"; do read -r x y <<< "$p"; if [ "$x" -gt 0 ]; then adb shell input tap "$x" "$y"; break; fi; done
