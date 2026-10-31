@@ -234,6 +234,7 @@ class GateActivity : BaseActivity() {
             val q = com.poshith.intent.core.Quotes.forMoment(System.currentTimeMillis(), 60_000L)
             after.addView(text("“${q.text}”", 15f, P.text2, Fonts.light(this)).apply {
                 gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f); setPadding(dp(8), dp(28), dp(8), 0)
+                breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
             }, lp())
             if (q.by.isNotBlank()) after.addView(text(q.by.uppercase(), 11f, P.text3, Fonts.medium(this)).apply {
                 gravity = Gravity.CENTER; letterSpacing = 0.08f; setPadding(0, dp(8), 0, 0)

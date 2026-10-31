@@ -29,6 +29,7 @@ class MindPanel(private val a: BaseActivity) {
     var isOpen = false
         private set
     private val closer: () -> Unit = { close() }
+    private val bars = BaseActivity.BarLayer(P.dark, P.dark)
     private val barL: (Bars) -> Unit = { b -> sc.setPadding(0, b.top, 0, b.bottom); col.setPadding(b.left, a.dp(28), b.right, a.dp(28)) }
 
     init {
@@ -46,6 +47,7 @@ class MindPanel(private val a: BaseActivity) {
         a.host.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         a.pushBack(closer)
         a.onBars(barL)
+        a.pushBarLayer(bars)
         sc.scrollTo(0, 0)
         if (a.animationsOn()) {
             root.translationX = -a.resources.displayMetrics.widthPixels * 0.35f
@@ -59,6 +61,7 @@ class MindPanel(private val a: BaseActivity) {
         isOpen = false
         a.dropBack(closer)
         a.removeBars(barL)
+        a.dropBarLayer(bars)
         if (a.animationsOn()) {
             root.animate().translationX(-a.resources.displayMetrics.widthPixels * 0.35f).alpha(0f).setDuration(180)
                 .withEndAction { (root.parent as? ViewGroup)?.removeView(root) }.start()

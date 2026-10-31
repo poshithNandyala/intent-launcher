@@ -63,6 +63,7 @@ class BreakScreen(private val a: BaseActivity, private val onOver: () -> Unit) {
         val q = com.poshith.intent.core.Quotes.forMoment(System.currentTimeMillis())
         bottom.addView(a.text("“${q.text}”", 15.5f, k.text2, Fonts.light(a)).apply {
             gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f); setPadding(a.dp(12), 0, a.dp(12), 0)
+            breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
         }, lp())
         if (q.by.isNotBlank()) bottom.addView(a.text(q.by.uppercase(), 11.5f, k.text3, Fonts.medium(a)).apply {
             gravity = Gravity.CENTER; letterSpacing = 0.08f; setPadding(0, a.dp(8), 0, 0)

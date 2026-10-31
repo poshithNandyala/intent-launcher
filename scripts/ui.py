@@ -3,6 +3,7 @@
   python3 scripts/ui.py tap "Begin"        tap the first element whose text starts with "Begin"
   python3 scripts/ui.py has "Begin"        exit 0 if it's on screen
   python3 scripts/ui.py texts              print every visible text
+  python3 scripts/ui.py dismiss            answer a system "isn't responding" dialog if one is up
 """
 import re
 import subprocess
@@ -17,6 +18,8 @@ def adb(*args):
 
 def nodes():
     for _ in range(3):
+        # Remove the last dump first: if this one fails, reading a stale file would describe an old screen.
+        adb("shell", "rm", "-f", "/sdcard/ui.xml")
         adb("shell", "uiautomator", "dump", "/sdcard/ui.xml")
         raw = adb("shell", "cat", "/sdcard/ui.xml").stdout
         if "<hierarchy" in raw:
@@ -54,6 +57,17 @@ def main():
             x, y = found.get(label, (-1, -1))
             print(x, y)
         return 0
+    if cmd == "dismiss":  # a system "isn't responding" / "keeps stopping" dialog over everything: answer it
+        ns = nodes()
+        if any("isn't responding" in (n.get("text") or "") or "keeps stopping" in (n.get("text") or "") for n in ns):
+            for want in ("Wait", "Close app", "Close"):
+                for n in ns:
+                    if (n.get("text") or "") == want:
+                        x, y = center(n)
+                        adb("shell", "input", "tap", str(x), str(y))
+                        print(f"   (answered a system dialog: {want})")
+                        return 0
+        return 1
     if cmd == "texts":
         for n in nodes():
             t = n.get("text") or n.get("content-desc")

@@ -23,7 +23,8 @@ record() { # name
     intent_crashes
     echo "== $name (pid: $(adb shell pidof $PKG || echo none))"
 }
-tap() { python3 scripts/ui.py tap "$1" || echo "   (couldn't find \"$1\")"; }
+# A slow emulator sometimes puts "Pixel Launcher isn't responding" over everything; answer it first.
+tap() { python3 scripts/ui.py dismiss && sleep 1; python3 scripts/ui.py tap "$1" || echo "   (couldn't find \"$1\")"; }
 top() { adb shell dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity"; }
 wait_top() { # activity-name seconds: wait until it's the resumed activity (slow emulators)
     for _ in $(seq 1 "$2"); do top | grep -q "$1" && return 0; sleep 1; done

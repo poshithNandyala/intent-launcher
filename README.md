@@ -30,6 +30,7 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
 | **Wind-down** | At night, mindful apps rest (optionally all non-essentials). |
 | **Check-in times** | Email or work chat can open only in your check-in windows (12:30 and 18:30 by default). |
 | **"What did you pick up your phone for?"** | A quiet card right after you unlock. "A call or message" shows Phone, Messages and WhatsApp; "Just checking" locks the phone; no answer in 15 s locks it too (with Focus Guard). |
+| **A line worth stopping for** | One quote a day under the date, from Seneca, Thoreau, Annie Dillard, James Clear, Alex Hormozi and others, plus a few of Intent's own. Another waits on the pause, the break and "time's up". Tap it for the next; turn it off in Settings. |
 | **Screen time you can feel** | Today's screen time under the date. Time in the apps that pull you grows heavier as it climbs; calls, maps and work are never singled out. |
 | **Rules you set while calm** | Making an app harder to open is instant. Making it easier waits 20 s (adjustable). Nothing ever stops you from changing a rule, switching launchers or uninstalling. |
 | **The Mind library** | Swipe right: 50+ short lessons, each with its source and an honest evidence label, covering the science and how people like Warren Buffett, Bill Gates, Pavel Durov and Christopher Nolan use (or don't use) their phones. It ends, on purpose. |
@@ -59,13 +60,14 @@ Intent has **no internet permission**, so it cannot send anything anywhere. Ther
 
 ## How it decides
 
-Every way of opening an app (home screen, search, and with Focus Guard on, notifications, recents and links) goes through one function, [`Policy.decide`](app/src/main/java/com/poshith/intent/core/Policy.kt). It's pure Kotlin with [83 unit tests](app/src/test/java/com/poshith/intent/core/Tests.kt):
+Every way of opening an app (home screen, search, and with Focus Guard on, notifications, recents and links) goes through one function, [`Policy.decide`](app/src/main/java/com/poshith/intent/core/Policy.kt). It's pure Kotlin with [90 unit tests](app/src/test/java/com/poshith/intent/core/Tests.kt):
 
 ```
 protected app (phone, settings, keyboard…)  → open
-session you already chose, still running    → open
+real break                                  → paused until it ends (only calls, and WhatsApp if kept)
 essential                                   → open
-focus / break / basic phone                 → paused until it ends
+focus / basic phone                         → paused until it ends
+session you already chose, still running    → open
 blocked                                     → paused (type a phrase for 5 minutes)
 mindful during morning quiet                → paused for a few minutes
 check-in app outside its window             → paused until the next window

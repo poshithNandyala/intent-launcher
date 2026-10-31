@@ -133,6 +133,7 @@ class Overlay(private val a: BaseActivity, private val content: View) {
     private val root = FrameLayout(a)
     private var open = false
     private val closer: () -> Unit = { close() }
+    private val bars = BaseActivity.BarLayer(P.dark, P.dark)
     private val barL: (Bars) -> Unit = { b -> root.setPadding(b.left, b.top + a.dp(20), b.right, b.bottomOrIme + a.dp(12)) }
     var onClose: (() -> Unit)? = null
 
@@ -148,6 +149,7 @@ class Overlay(private val a: BaseActivity, private val content: View) {
         a.host.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         a.pushBack(closer)
         a.onBars(barL)
+        a.pushBarLayer(bars)
         if (a.animationsOn()) { root.alpha = 0f; root.animate().alpha(1f).setDuration(160).start() }
         return this
     }
@@ -157,6 +159,7 @@ class Overlay(private val a: BaseActivity, private val content: View) {
         open = false
         a.dropBack(closer)
         a.removeBars(barL)
+        a.dropBarLayer(bars)
         hideKeyboard(a, root)
         (root.parent as? ViewGroup)?.removeView(root)
         onClose?.invoke()

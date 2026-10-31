@@ -354,6 +354,7 @@ class HomeActivity : BaseActivity() {
             var q = com.poshith.intent.core.Quotes.forDay(Store.dayNumber())
             val quote = text("", scale(16.5f), k.text2, Fonts.light(this)).apply {
                 gravity = g; setLineSpacing(0f, 1.3f); setPadding(0, dp(26), 0, dp(4))
+                breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED // even lines, no lonely last word
             }.legible()
             val by = text("", scale(12.5f), k.text3, Fonts.medium(this)).apply { gravity = g; letterSpacing = 0.06f }.legible()
             fun show() { quote.text = "“${q.text}”"; by.text = q.by.uppercase(); by.visibility = if (q.by.isBlank()) View.GONE else View.VISIBLE }
@@ -851,6 +852,7 @@ class HomeActivity : BaseActivity() {
         var isOpen = false
             private set
         private val closer: () -> Unit = { close() }
+        private val bars = BarLayer(P.dark, P.dark)
         private val barL: (com.poshith.intent.ui.Bars) -> Unit = { b ->
             col.setPadding(b.left, b.top + dp(16), b.right, b.bottomOrIme + dp(14))
         }
@@ -886,6 +888,7 @@ class HomeActivity : BaseActivity() {
             host.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             pushBack(closer)
             onBars(barL)
+            pushBarLayer(bars)
             if (animationsOn()) {
                 root.alpha = 0f; root.translationY = dp(40).toFloat()
                 root.animate().alpha(1f).translationY(0f).setDuration(200).start()
@@ -898,6 +901,7 @@ class HomeActivity : BaseActivity() {
             isOpen = false
             dropBack(closer)
             removeBars(barL)
+            dropBarLayer(bars)
             hideKeyboard(this@HomeActivity, input)
             if (animate && animationsOn()) {
                 root.animate().alpha(0f).translationY(dp(40).toFloat()).setDuration(160)

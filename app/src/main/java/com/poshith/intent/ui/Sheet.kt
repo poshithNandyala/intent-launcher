@@ -41,6 +41,8 @@ class Sheet(private val a: BaseActivity, title: String?, subtitle: String? = nul
     var onDismiss: (() -> Unit)? = null
     private var shown = false
     private val closer: () -> Unit = { dismiss() }
+    // The dimmed backdrop is dark at the top; the card decides the bottom.
+    private val bars = BaseActivity.BarLayer(statusOnDark = true, navOnDark = P.dark)
     private val barListener: (Bars) -> Unit = { b ->
         card.setPadding(card.paddingLeft, card.paddingTop, card.paddingRight, a.dp(12) + b.bottomOrIme)
     }
@@ -73,6 +75,7 @@ class Sheet(private val a: BaseActivity, title: String?, subtitle: String? = nul
         a.host.addView(scrim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         a.pushBack(closer)
         a.onBars(barListener)
+        a.pushBarLayer(bars)
         if (a.animationsOn()) {
             scrim.alpha = 0f
             card.translationY = a.resources.displayMetrics.heightPixels * 0.5f
@@ -87,6 +90,7 @@ class Sheet(private val a: BaseActivity, title: String?, subtitle: String? = nul
         shown = false
         a.dropBack(closer)
         a.removeBars(barListener)
+        a.dropBarLayer(bars)
         hideKeyboard(a, scrim)
         val done = { (scrim.parent as? ViewGroup)?.removeView(scrim); onDismiss?.invoke(); Unit }
         if (a.animationsOn()) {

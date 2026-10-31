@@ -83,26 +83,34 @@ object Theme {
         val base = a as? BaseActivity
         w.setBackgroundDrawable(ColorDrawable(base?.windowColor() ?: p.bg))
         legacyBars(w, base?.barsOnDark() ?: p.dark)
-        if (Build.VERSION.SDK_INT >= 30) {
-            w.setDecorFitsSystemWindows(false)
-            barIcons(a)
-        }
+        if (Build.VERSION.SDK_INT >= 30) w.setDecorFitsSystemWindows(false)
+        barIcons(a)
     }
 
-    /** Dark icons on a light screen and the other way round. Called again once the window is attached. */
+    /**
+     * Dark icons on a light screen and the other way round. Whatever is on top decides: a sheet sets the
+     * navigation bar to match its card (and the status bar to suit its dimmed backdrop), a full-screen
+     * panel sets both. Called again whenever a layer opens or closes, and once the window is attached.
+     */
+    @Suppress("DEPRECATION")
     fun barIcons(a: Activity) {
-        if (Build.VERSION.SDK_INT < 30) return
-        val dark = (a as? BaseActivity)?.barsOnDark() ?: p.dark
-        val light = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS or WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
-        // Window.getInsetsController() throws until the decor view exists; asking the decor view creates it.
-        a.window.decorView.windowInsetsController?.setSystemBarsAppearance(if (dark) 0 else light, light)
-        // Android 11 ignores that when the theme set light bars (a known platform bug): set the old flags too.
-        if (Build.VERSION.SDK_INT == 30) {
-            @Suppress("DEPRECATION")
-            val flags = View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        val base = a as? BaseActivity
+        val statusDark = base?.statusOnDark() ?: p.dark
+        val navDark = base?.navOnDark() ?: p.dark
+        if (Build.VERSION.SDK_INT >= 30) {
+            val ls = WindowInsetsController.APPEARANCE_LIGHT_STATUS_BARS
+            val ln = WindowInsetsController.APPEARANCE_LIGHT_NAVIGATION_BARS
+            // Window.getInsetsController() throws until the decor view exists; asking the decor view creates it.
+            a.window.decorView.windowInsetsController?.setSystemBarsAppearance((if (statusDark) 0 else ls) or (if (navDark) 0 else ln), ls or ln)
+        }
+        // Android 10 and older only know the old flags, and Android 11 ignores the new call when the theme
+        // set light bars (a known platform bug): set the old flags too.
+        if (Build.VERSION.SDK_INT <= 30) {
             val v = a.window.decorView
-            @Suppress("DEPRECATION")
-            v.systemUiVisibility = if (dark) v.systemUiVisibility and flags.inv() else v.systemUiVisibility or flags
+            var f = v.systemUiVisibility
+            f = if (statusDark) f and View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR.inv() else f or View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR
+            f = if (navDark) f and View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR.inv() else f or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+            v.systemUiVisibility = f
         }
     }
 
@@ -454,6 +462,14 @@ abstract class BaseActivity : Activity() {
     open fun windowColor(): Int = P.bg
     /** True when the status and navigation bar icons sit on something dark (so they should be light). */
     open fun barsOnDark(): Boolean = P.dark
+
+    /** Something drawn over the screen that decides the bar icons while it's open (null: leave as is). */
+    class BarLayer(val statusOnDark: Boolean?, val navOnDark: Boolean?)
+    private val barLayers = ArrayList<BarLayer>()
+    fun pushBarLayer(l: BarLayer) { barLayers += l; Theme.barIcons(this) }
+    fun dropBarLayer(l: BarLayer) { if (barLayers.remove(l)) Theme.barIcons(this) }
+    fun statusOnDark(): Boolean = barLayers.lastOrNull { it.statusOnDark != null }?.statusOnDark ?: barsOnDark()
+    fun navOnDark(): Boolean = barLayers.lastOrNull { it.navOnDark != null }?.navOnDark ?: barsOnDark()
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
