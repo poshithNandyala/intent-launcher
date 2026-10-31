@@ -15,6 +15,7 @@ import android.view.Gravity
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.View
+import android.view.animation.DecelerateInterpolator
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.WindowInsetsController
@@ -102,6 +103,7 @@ class HomeActivity : BaseActivity() {
     private var flingFired = false
     private var shownCheckInFor = 0L
     private var resumed = false
+    private var away = true // home was fully hidden (another app, screen off): settle in on return
     private var layoutSig = ""
     private val barsListener: (com.poshith.intent.ui.Bars) -> Unit = { b ->
         if (::page.isInitialized) page.setPadding(dp(30) + b.left, b.top + dp(34), dp(30) + b.right, b.bottom + dp(6))
@@ -149,6 +151,7 @@ class HomeActivity : BaseActivity() {
         ui.removeCallbacks(ticker); ui.postDelayed(ticker, 20_000)
         maybeCheckIn()
         ui.postDelayed({ if (resumed) maybeCheckIn() }, 500)
+        if (away) { away = false; settle() }
     }
 
     override fun onPause() {
@@ -163,6 +166,7 @@ class HomeActivity : BaseActivity() {
     override fun onStop() {
         super.onStop()
         // Leave home clean for next time.
+        away = true
         hideCheckIn()
         library?.close(animate = false)
     }
@@ -421,6 +425,33 @@ class HomeActivity : BaseActivity() {
         page.setOnTouchListener { _, e -> taps.onTouchEvent(e); true }
     }
 
+    /**
+     * Coming back home: the clock, then each line, rises a few pixels into place. Short and soft,
+     * so it reads as calm rather than busy, and skipped when animations are off.
+     */
+    private fun settle() {
+        if (!animationsOn() || breakScreen != null || !::page.isInitialized) return
+        val views = ArrayList<View>()
+        for (i in 0 until page.childCount) {
+            val v = page.getChildAt(i)
+            if (v.visibility != View.VISIBLE) continue
+            if (v === midScroll) {
+                if (oneThing.visibility == View.VISIBLE) views += oneThing
+                if (status.visibility == View.VISIBLE) views += status
+                for (j in 0 until appsBox.childCount) appsBox.getChildAt(j).takeIf { it.visibility == View.VISIBLE }?.let { views += it }
+            } else views += v
+        }
+        val rise = dp(10).toFloat()
+        val ease = DecelerateInterpolator(2.2f)
+        views.forEachIndexed { n, v ->
+            v.animate().cancel()
+            v.alpha = 0f
+            v.translationY = rise
+            v.animate().alpha(1f).translationY(0f).setStartDelay(minOf(n, 9) * 16L).setDuration(300)
+                .setInterpolator(ease).start()
+        }
+    }
+
     // ---------------------------------------------------------------------------------- real break
 
     private fun buildBreak() {
@@ -626,31 +657,20 @@ class HomeActivity : BaseActivity() {
     private fun startAutoLock(at: Long) {
         val k = ink()
         val g = alignGravity()
-        val caption = text("", 13f, k.text3).apply { gravity = g; setPadding(0, dp(14), 0, dp(8)) }
-        val track = FrameLayout(this)
-        val line = View(this).apply { background = rounded(k.accent, dp(1).toFloat()); pivotX = 0f }
-        track.addView(line, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(2)))
-        checkIn.addView(caption, lp())
-        checkIn.addView(track, lp())
-        val total = AUTO_LOCK_MS
-        val startAt = SystemClock.uptimeMillis()
+        checkIn.addView(text("No answer locks the phone.", 13f, k.text3).apply { gravity = g; setPadding(0, dp(14), 0, dp(8)) }, lp())
+        val line = com.poshith.intent.ui.Countdown(this, k.accent, AUTO_LOCK_MS, g)
+        checkIn.addView(line, lp(ViewGroup.LayoutParams.MATCH_PARENT, dp(2)))
+        line.start()
         val r = object : Runnable {
             override fun run() {
                 if (autoLock !== this || shownCheckInFor != at) return
-                val left = total - (SystemClock.uptimeMillis() - startAt)
-                if (left <= 0) {
-                    autoLock = null
-                    hideCheckIn()
-                    FocusGuardService.lockScreen()
-                    return
-                }
-                line.scaleX = left / total.toFloat()
-                caption.text = "No answer locks the phone in ${(left + 999) / 1000} s"
-                ui.postDelayed(this, 50)
+                autoLock = null
+                hideCheckIn()
+                FocusGuardService.lockScreen()
             }
         }
         autoLock = r
-        ui.post(r)
+        ui.postDelayed(r, AUTO_LOCK_MS)
     }
 
     private fun cancelAutoLock() {
@@ -783,7 +803,7 @@ class HomeActivity : BaseActivity() {
         if (hasBackLayers()) return false
         flingFired = true
         if (right) {
-            if (Store.swipeRightMind) mindPanel().open()
+            if (Store.swipeRightMind) { page.tick(); mindPanel().open() }
         } else {
             val key = Store.swipeLeftKey
             val app = if (key.isNotBlank()) Apps.byKey(key) else null
@@ -802,7 +822,7 @@ class HomeActivity : BaseActivity() {
         if (midScroll?.canScrollVertically(if (up) 1 else -1) == true) return false
         flingFired = true
         hideCheckIn()
-        if (up) openLibrary() else expandNotifications()
+        if (up) { if (!Store.basicPhone) page.tick(); openLibrary() } else expandNotifications()
         return true
     }
 

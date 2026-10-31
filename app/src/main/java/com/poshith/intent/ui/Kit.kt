@@ -260,6 +260,27 @@ fun styleButton(b: TextView, kind: Kind, enabled: Boolean) {
 }
 
 /** A selectable pill. */
+/**
+ * A thin line that shrinks to nothing over [totalMs]. It draws itself, so nothing on screen changes
+ * but pixels: smooth, nearly free, and silent to accessibility tools (no text ticking every second).
+ */
+class Countdown(ctx: Context, color: Int, private val totalMs: Long, private val anchor: Int = Gravity.START) : View(ctx) {
+    private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
+    private var startAt = 0L
+
+    fun start() { startAt = android.os.SystemClock.uptimeMillis(); postInvalidateOnAnimation() }
+
+    override fun onDraw(c: android.graphics.Canvas) {
+        if (startAt == 0L || totalMs <= 0) return
+        val left = (totalMs - (android.os.SystemClock.uptimeMillis() - startAt)).coerceAtLeast(0L)
+        val w = width * (left / totalMs.toFloat())
+        val r = height / 2f
+        val x = when (anchor) { Gravity.CENTER_HORIZONTAL -> (width - w) / 2f; Gravity.END -> width - w; else -> 0f }
+        if (w > 0f) c.drawRoundRect(x, 0f, x + w, height.toFloat(), r, r, paint)
+        if (left > 0 && isAttachedToWindow) postInvalidateOnAnimation()
+    }
+}
+
 class Chip(ctx: Context, label: String, private val pal: Palette = P) : TextView(ctx) {
     var on = false
         set(v) { field = v; restyle() }
@@ -385,6 +406,10 @@ fun Context.scroller(child: View): ScrollView = ScrollView(this).apply {
     isFillViewport = true
     isVerticalScrollBarEnabled = false
     overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
+    // Text leaving the page fades out softly at the edges instead of being cut by a hard line, and
+    // never slides under the clock and icons in the status bar (pages pad the scroller, not the text).
+    isVerticalFadingEdgeEnabled = true
+    setFadingEdgeLength(dp(28))
     addView(child, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
 }
 

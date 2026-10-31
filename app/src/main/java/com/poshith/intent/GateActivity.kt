@@ -133,7 +133,8 @@ class GateActivity : BaseActivity() {
         host.addView(root, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         removeBars(barsListener)
         barsListener = { b ->
-            col.setPadding(dp(28), b.top + dp(28), dp(28), dp(12))
+            sc.setPadding(0, b.top, 0, 0)
+            col.setPadding(dp(28), dp(28), dp(28), dp(12))
             bar.setPadding(dp(24) + b.left, dp(8), dp(24) + b.right, b.bottomOrIme + dp(14))
         }
         onBars(barsListener)
@@ -231,7 +232,12 @@ class GateActivity : BaseActivity() {
         else if (Store.oneThing.isNotBlank()) line(after, "Your one thing today: ${Store.oneThing}", P.text3, 14f, 24)
         else {
             val q = com.poshith.intent.core.Quotes.forMoment(System.currentTimeMillis(), 60_000L)
-            line(after, "“${q.text}”" + (if (q.by.isBlank()) "" else "\n${q.by}"), P.text3, 14.5f, 26)
+            after.addView(text("“${q.text}”", 15f, P.text2, Fonts.light(this)).apply {
+                gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f); setPadding(dp(8), dp(28), dp(8), 0)
+            }, lp())
+            if (q.by.isNotBlank()) after.addView(text(q.by.uppercase(), 11f, P.text3, Fonts.medium(this)).apply {
+                gravity = Gravity.CENTER; letterSpacing = 0.08f; setPadding(0, dp(8), 0, 0)
+            }, lp())
         }
 
         bar.addView(button("Not now", Kind.PRIMARY) { notNow() }, lp())

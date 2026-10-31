@@ -29,7 +29,7 @@ class MindPanel(private val a: BaseActivity) {
     var isOpen = false
         private set
     private val closer: () -> Unit = { close() }
-    private val barL: (Bars) -> Unit = { b -> col.setPadding(b.left, b.top + a.dp(28), b.right, b.bottom + a.dp(28)) }
+    private val barL: (Bars) -> Unit = { b -> sc.setPadding(0, b.top, 0, b.bottom); col.setPadding(b.left, a.dp(28), b.right, a.dp(28)) }
 
     init {
         root.setBackgroundColor(P.bg)

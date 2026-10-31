@@ -152,8 +152,11 @@ class FocusGuardService : AccessibilityService() {
         }
         if (next == current) {
             // The same app put up another screen. If it should be paused but the pause isn't in front
-            // (a splash screen opened the real app over it), pause it again.
-            if (isApp(next) && Launch.decide(this, next) !is Decision.Open) showGate(next)
+            // (a splash screen opened the real app over it), pause it again. If you just said "Not now"
+            // to it, it doesn't get to ask twice: straight home instead.
+            if (isApp(next) && Launch.decide(this, next) !is Decision.Open) {
+                if (justSaidNotNow(next)) performGlobalAction(GLOBAL_ACTION_HOME) else showGate(next)
+            }
             return
         }
         moveTo(next)

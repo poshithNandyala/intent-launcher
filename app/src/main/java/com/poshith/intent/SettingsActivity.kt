@@ -66,7 +66,7 @@ class SettingsActivity : BaseActivity() {
         col = vbox()
         val sc = scroller(col)
         host.addView(sc, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        onBars { b -> col.setPadding(b.left, b.top + dp(20), b.right, b.bottom + dp(28)) }
+        onBars { b -> sc.setPadding(0, b.top, 0, b.bottom); col.setPadding(b.left, dp(20), b.right, dp(28)) }
         pages += intent.getStringExtra(EXTRA_PAGE) ?: "main"
         render()
     }

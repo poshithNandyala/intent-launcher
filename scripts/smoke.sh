@@ -81,12 +81,13 @@ record home
 # Main gestures
 swipe 50 80 50 25;  record library
 type_text "set"; record search
-adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK
+adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK; sleep 1
 swipe 15 50 85 50;  record mind
 adb shell input keyevent KEYCODE_BACK
 adb shell input swipe "$((W / 2))" "$((H / 2))" "$((W / 2))" "$((H / 2))" 900
 record long-press
 tap "Settings";           record settings
+swipe 50 75 50 45;        record settings-scrolled
 adb shell input keyevent KEYCODE_BACK
 adb shell am start -W -n $PKG/.HomeActivity > /dev/null 2>&1
 tap "Focus";              record focus-sheet
@@ -153,7 +154,8 @@ sleep 3
 [ "$jx" -gt 0 ] && adb shell input tap "$jx" "$jy"
 sleep 3
 snap just-checking-locks
-adb shell dumpsys window | grep -m1 -iE "mShowingLockscreen|isKeyguardShowing|KeyguardShowing" > "$OUT/lock-state.txt" 2>&1
+{ adb shell dumpsys window | grep -m1 -iE "mShowingLockscreen|isKeyguardShowing|KeyguardShowing"
+  adb shell dumpsys power | grep -m1 -E "mWakefulness="; } > "$OUT/lock-state.txt" 2>&1
 adb shell input keyevent KEYCODE_WAKEUP; sleep 1; adb shell wm dismiss-keyguard; sleep 2
 
 # A real break: just a timer, only calls
