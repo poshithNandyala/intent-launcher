@@ -85,7 +85,7 @@ cat "$OUT/install.txt"
 adb logcat -c
 adb logcat -b crash -c
 
-adb shell am start -W -n $PKG/.HomeActivity > "$OUT/start.txt" 2>&1
+timeout 30 adb shell am start -n $PKG/.HomeActivity > "$OUT/start.txt" 2>&1; sleep 4
 record launch
 
 # Setup
@@ -95,11 +95,11 @@ tap "YouTube"             # only Instagram comes ticked; this test uses YouTube 
 tap "Next";               record plan
 # The home screen coming forward mid-setup (choosing Intent as home does that), and Intent restarting:
 # setup must come back on the same page, not from the start.
-adb shell am start -W -n $PKG/.HomeActivity > /dev/null 2>&1
+timeout 30 adb shell am start -n $PKG/.HomeActivity > /dev/null 2>&1; sleep 4
 record setup-after-home
 expect_text "When you feel the pull" setup-after-home
 adb shell am force-stop $PKG; sleep 1
-adb shell am start -W -n $PKG/.HomeActivity > /dev/null 2>&1
+timeout 30 adb shell am start -n $PKG/.HomeActivity > /dev/null 2>&1; sleep 4
 record setup-after-restart
 expect_text "When you feel the pull" setup-after-restart
 tap "Next";               record protect
@@ -108,7 +108,7 @@ tap "Skip for now";       record quiet
 tap "Next";               record done
 tap "Start using Intent"; record home-role
 adb shell input keyevent KEYCODE_BACK
-adb shell am start -W -n $PKG/.HomeActivity > /dev/null 2>&1
+timeout 30 adb shell am start -n $PKG/.HomeActivity > /dev/null 2>&1; sleep 4
 record home
 
 # Main gestures
@@ -124,7 +124,7 @@ swipe 50 75 50 45;        record settings-scrolled
 tap "Shorts and Reels";   record reels-settings
 adb shell input keyevent KEYCODE_BACK
 adb shell input keyevent KEYCODE_BACK
-adb shell am start -W -n $PKG/.HomeActivity > /dev/null 2>&1
+timeout 30 adb shell am start -n $PKG/.HomeActivity > /dev/null 2>&1; sleep 4
 tap "Focus";              record focus-sheet
 adb shell input keyevent KEYCODE_BACK
 
@@ -246,7 +246,7 @@ if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; 
     adb shell settings put secure enabled_accessibility_services $PKG/$PKG.guard.FocusGuardService:$PKG/$PKG.guard.ReelsGuardService
     adb shell settings put secure accessibility_enabled 1
     sleep 3
-    adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
+    timeout 30 adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
     sleep 3
     flick
     snap shorts-first-swipe        # expected: the feed closed, ReelsActivity over Intent's home
