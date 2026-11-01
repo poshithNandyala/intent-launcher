@@ -223,20 +223,30 @@ fun main() {
     check("leaving for a minute doesn't start over", quick.swipes == 2 && quick.ask() == Sitting.Ask.NONE)
 
     // --- counting swipes: fast flicking counts every swipe, one swipe's events count once
+    // 20 flicks 400 ms apart, each bringing in a new video a moment later (what the guard sees)
     val flick = Sitting()
-    var counted = 0
-    for (i in 0 until 20) if (flick.swipe(100_000L + i * 400L)) counted++
-    check("20 flicks 400 ms apart are 20 swipes", counted == 20 && flick.swipes == 20)
+    for (i in 0 until 20) {
+        val t = 100_000L + i * 400L
+        flick.swipe(t); flick.swipe(t + 100); flick.swipe(t + 200)
+        flick.newVideo(t + 300)
+    }
+    check("20 fast flicks are 20 swipes", flick.swipes == 20)
+    val blind = Sitting()
+    for (i in 0 until 20) blind.swipe(150_000L + i * 400L)
+    check("fast flicks with no video in sight still count, not just the first", blind.swipes >= 4)
     val one = Sitting()
     for (t in 0L..500L step 100L) one.swipe(200_000L + t)
     check("one swipe's burst of events is one swipe", one.swipes == 1)
+    val slow = Sitting()
+    slow.swipe(250_000); slow.swipe(250_450); slow.swipe(250_900); slow.newVideo(251_300)
+    check("a slow phone's swipe, settling half a second later, is one swipe", slow.swipes == 1)
     val run = Sitting()
     for (t in 0L until 3_000L step 100L) run.swipe(300_000L + t)
-    check("3 s of non-stop scrolling is several swipes", run.swipes == 3)
+    check("3 s of non-stop scrolling is more than one swipe", run.swipes == 2)
     val seen = Sitting()
     seen.swipe(400_000); seen.swipe(400_100)
     check("the new video a scroll brought in isn't counted twice", !seen.newVideo(400_400) && seen.swipes == 1)
-    check("a new video no scroll counted is counted", seen.newVideo(402_000) && seen.swipes == 2)
+    check("a new video no scroll counted is counted", seen.newVideo(403_000) && seen.swipes == 2)
     seen.swipe(410_000)
     seen.newVideo(410_300)
     check("each scroll matches one new video only", seen.newVideo(410_900) && seen.swipes == 4)

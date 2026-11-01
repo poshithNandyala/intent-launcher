@@ -140,12 +140,14 @@ class Sitting {
     }
 
     companion object {
-        /** Scroll events closer together than this belong to one swipe (the drag and the page settling). */
-        const val QUIET_MS = 350L
+        /** Scroll events closer together than this belong to one swipe (the drag, then the page settling,
+         *  which on a slow phone can come half a second later). */
+        const val QUIET_MS = 700L
         /** One swipe lasts at most this long; a longer run of scrolling is several swipes. */
-        const val BURST_MS = 1_200L
-        /** A new video seen this soon after a counted scroll is the one that scroll brought in. */
-        const val MATCH_MS = 1_500L
+        const val BURST_MS = 2_000L
+        /** A new video seen this soon after a counted scroll is the one that scroll brought in. Fast
+         *  flicking runs scrolls together, and then it's the new videos that count the rest. */
+        const val MATCH_MS = 2_500L
         /** This long without a swipe, and the next one starts a new sitting. */
         const val GAP_MS = 3 * 60_000L
     }
