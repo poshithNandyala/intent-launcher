@@ -51,14 +51,7 @@ class ReelsGuardService : AccessibilityService() {
         }
 
         /** Switched on in Android's accessibility settings (it may be between restarts right now). */
-        fun isOn(ctx: Context): Boolean {
-            if (running) return true
-            return try {
-                val enabled = Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
-                val me = ComponentName(ctx, ReelsGuardService::class.java)
-                enabled.split(':').any { ComponentName.unflattenFromString(it) == me }
-            } catch (_: Exception) { false }
-        }
+        fun isOn(ctx: Context): Boolean = running || Launch.switchedOn(ctx, ReelsGuardService::class.java)
     }
 
     private val h = Handler(Looper.getMainLooper())
@@ -115,7 +108,7 @@ class ReelsGuardService : AccessibilityService() {
             lastIndex[feed] = e.fromIndex
             if (last == null || last == e.fromIndex) return
         }
-        swiped(feed, pkg)
+        swiped(feed, pkg, newVideo = false)
     }
 
     /** What's in front of [pkg] now: in the feed or not, and has the Short changed since last time? */
@@ -138,7 +131,7 @@ class ReelsGuardService : AccessibilityService() {
         val page = screen.page ?: return
         val before = lastPage
         lastPage = page
-        if (before != null && page != before) { log("new ${feed.one} in front"); swiped(feed, pkg) }
+        if (before != null && page != before) { log("new ${feed.one} in front"); swiped(feed, pkg, newVideo = true) }
     }
 
     /** Debug builds and the emulator test read these; view names and counts only, never what's on screen. */
@@ -177,11 +170,12 @@ class ReelsGuardService : AccessibilityService() {
         return try { windows.firstNotNullOfOrNull { w -> w.root?.takeIf { it.packageName?.toString() == pkg } } } catch (_: Exception) { null }
     }
 
-    private fun swiped(feed: Feed, pkg: String) {
+    /** A swipe seen from scrolling, or a [newVideo] seen on screen (the two are matched, not double-counted). */
+    private fun swiped(feed: Feed, pkg: String, newVideo: Boolean) {
         val now = SystemClock.elapsedRealtime()
         val ask = synchronized(sittings) {
             val s = sitting(feed)
-            if (!s.swipe(now)) return
+            if (!(if (newVideo) s.newVideo(now) else s.swipe(now))) return
             s.ask()
         }
         Stats.shortVideo(feed)
@@ -198,7 +192,7 @@ class ReelsGuardService : AccessibilityService() {
         // The app goes first (home in front without "user leaving", so no picture-in-picture, and its
         // sound stops), then the pause appears over the home screen.
         Closer.toHome(this)
-        Closer.silence(this)
+        Closer.silence(this, pkg)
         try {
             startActivity(ReelsActivity.intent(this, feed, pkg, ask).addFlags(Closer.OVER_APP or Intent.FLAG_ACTIVITY_NO_ANIMATION))
         } catch (_: Exception) {}

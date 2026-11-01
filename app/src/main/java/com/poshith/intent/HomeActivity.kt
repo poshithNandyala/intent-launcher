@@ -690,6 +690,8 @@ class HomeActivity : BaseActivity() {
                     row("In pull apps", Usage.formatMinutes(pull), warn = pull >= 2 * 3_600_000L)
                     for ((pkg, ms) in top) row("   " + Apps.labelFor(this, pkg), Usage.formatMinutes(ms))
                 }
+                val left = com.poshith.intent.core.Limits.budgetLeft(Store.budgetMin, Stats.day().plannedMin)
+                if (left != null) row("Mindful budget left", "$left of ${Store.budgetMin} min", warn = left == 0)
                 if (shorts > 0) row("Shorts swiped", shorts.toString(), warn = shorts >= 50)
                 if (reels > 0) row("Reels swiped", reels.toString(), warn = reels >= 50)
                 if (notNow > 0) row("Said “Not now”", "$notNow×")

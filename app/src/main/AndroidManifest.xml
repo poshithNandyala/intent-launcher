@@ -18,6 +18,10 @@
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
     <!-- Closing an app when its minutes are up (Android 13 and older; newer Android ignores it). -->
     <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+    <!-- The real break ends on time, with the phone asleep too: it's a timer the person started.
+         Android 12: allowed by default with this; Android 13+: USE_EXACT_ALARM. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.USE_EXACT_ALARM" />
     <!-- Only used to open your alarm list when you tap the clock. -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 

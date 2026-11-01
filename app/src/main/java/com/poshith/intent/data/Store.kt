@@ -137,7 +137,15 @@ object Store {
         put("rules", all.toString())
     }
 
-    fun setMode(pkg: String, m: Mode) = setRule(pkg, rule(pkg).copy(mode = m))
+    /** Changes an app's mode. An app that becomes mindful gets your current mindful settings, all of them
+     *  (pause, usual session, daily sessions, the growing pause), so nothing loosens by being added later. */
+    fun setMode(pkg: String, m: Mode) {
+        val cur = rule(pkg)
+        setRule(pkg, if (m == Mode.MINDFUL && cur.mode != Mode.MINDFUL) mindfulDefaults(cur) else cur.copy(mode = m))
+    }
+
+    fun mindfulDefaults(r: Rule = Rule()): Rule = r.copy(mode = Mode.MINDFUL, pauseSec = defaultPause, sessionMin = defaultSession,
+        dailyOpenLimit = defaultLimit, escalate = defaultEscalate)
 
     fun packagesWithMode(m: Mode): Set<String> {
         val all = rules()
@@ -148,6 +156,29 @@ object Store {
 
     var defaultPause: Int get() = int("default_pause", Rule.DEFAULT_PAUSE_SEC); set(v) = putI("default_pause", v)
     var defaultSession: Int get() = int("default_session", Rule.DEFAULT_SESSION_MIN); set(v) = putI("default_session", v)
+    /** One daily budget of minutes for all mindful apps together (0 = none). Every session takes its minutes from it. */
+    var budgetMin: Int get() = int("budget_min", 0); set(v) = putI("budget_min", v)
+    /** A short rest for mindful apps after several sessions close together. */
+    var restOn: Boolean get() = bool("rest_on", true); set(v) = putB("rest_on", v)
+    var restUntil: Long get() = long("rest_until", 0L); set(v) = putL("rest_until", v)
+    /** When the last few mindful sessions started (wall clock), for the rest. */
+    val sessionStarts: List<Long>
+        get() = try { JSONArray(str("session_starts", "[]")).let { a -> List(a.length()) { a.getLong(it) } } } catch (_: Exception) { emptyList() }
+    fun clearSessionStarts() = put("session_starts", "[]")
+    fun noteSessionStart(now: Long) {
+        val keep = (sessionStarts + now).filter { now - it < com.poshith.intent.core.Limits.REST_WINDOW_MS }
+        put("session_starts", JSONArray(keep).toString())
+    }
+    /** Daily sessions per mindful app (0 = no limit). Before this was saved on its own, it lived only on
+     *  the mindful apps themselves: read it from them until it's set. */
+    var defaultLimit: Int
+        get() = if (p.contains("default_limit")) int("default_limit", 0)
+            else packagesWithMode(Mode.MINDFUL).firstOrNull()?.let { rule(it).dailyOpenLimit } ?: 0
+        set(v) = putI("default_limit", v)
+    var defaultEscalate: Boolean
+        get() = if (p.contains("default_escalate")) bool("default_escalate", true)
+            else packagesWithMode(Mode.MINDFUL).firstOrNull()?.let { rule(it).escalate } ?: true
+        set(v) = putB("default_escalate", v)
     /** Seconds you wait before a change that makes an app easier to open takes effect. 0 = off. */
     var coolOffSec: Int get() = int("cool_off", 20); set(v) = putI("cool_off", v)
 

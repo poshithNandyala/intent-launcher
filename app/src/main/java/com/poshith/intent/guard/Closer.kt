@@ -1,15 +1,19 @@
 package com.poshith.intent.guard
 
 import android.app.ActivityManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
+import android.media.session.MediaSessionManager
+import android.media.session.PlaybackState
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
+import android.view.KeyEvent
 import com.poshith.intent.HomeActivity
 
 /**
@@ -48,7 +52,7 @@ object Closer {
     /** Closes [pkg]: home in front, sound stopped, and (where Android allows) the app's process ended. */
     fun close(ctx: Context, pkg: String) {
         toHome(ctx)
-        silence(ctx)
+        silence(ctx, pkg)
         if (Build.VERSION.SDK_INT <= 33) {
             val app = ctx.applicationContext
             main.postDelayed({
@@ -57,8 +61,17 @@ object Closer {
         }
     }
 
-    /** Takes audio focus for a moment and lets it go: whatever was playing pauses, and stays paused. */
-    fun silence(ctx: Context) {
+    /**
+     * Stops what [pkg] is playing (a video in a picture-in-picture window, say).
+     *
+     * With Notification access Intent can see the phone's media players, so it pauses exactly that app's
+     * and your music elsewhere keeps playing. Without it, and only when [broad], it takes audio focus for
+     * a moment, which pauses whatever is playing; if Android refuses that (newer Android can, for an app
+     * that isn't in front), it sends the "pause" media key instead.
+     */
+    fun silence(ctx: Context, pkg: String?, broad: Boolean = true) {
+        val precise = if (pkg != null) pausePlayer(ctx, pkg) else null
+        if (precise != null || !broad) return
         val am = ctx.applicationContext.getSystemService(AudioManager::class.java) ?: return
         try {
             val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
@@ -70,8 +83,29 @@ object Closer {
                 .build()
             if (am.requestAudioFocus(req) == AudioManager.AUDIOFOCUS_REQUEST_GRANTED) {
                 main.postDelayed({ try { am.abandonAudioFocusRequest(req) } catch (_: Exception) {} }, 800)
+            } else {
+                android.util.Log.d("IntentCloser", "audio focus refused; sending the pause key")
+                am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, KeyEvent.KEYCODE_MEDIA_PAUSE))
+                am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, KeyEvent.KEYCODE_MEDIA_PAUSE))
             }
         } catch (_: Exception) {}
+    }
+
+    /** Pauses [pkg]'s own media players. Null if Intent can't see them (no Notification access). */
+    private fun pausePlayer(ctx: Context, pkg: String): Boolean? {
+        if (!BreakQuietService.hasAccess(ctx)) return null
+        return try {
+            val msm = ctx.getSystemService(MediaSessionManager::class.java) ?: return null
+            var paused = false
+            for (c in msm.getActiveSessions(ComponentName(ctx, BreakQuietService::class.java))) {
+                if (c.packageName != pkg) continue
+                when (c.playbackState?.state) {
+                    PlaybackState.STATE_PLAYING, PlaybackState.STATE_BUFFERING, PlaybackState.STATE_FAST_FORWARDING,
+                    PlaybackState.STATE_REWINDING -> { c.transportControls.pause(); paused = true }
+                }
+            }
+            paused
+        } catch (_: Exception) { null }
     }
 
     /** Back into [pkg] where it was left (its task comes to the front, it isn't restarted). */

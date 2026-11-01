@@ -215,7 +215,7 @@ class OnboardingActivity : BaseActivity() {
         val actions = vbox().apply { setPadding(dp(24), dp(10), dp(24), 0) }
         actions.addView(button("Next", Kind.PRIMARY) {
             pull = picker.selected.toList()
-            for (p in pull) Store.setRule(p, Store.rule(p).copy(mode = Mode.MINDFUL, pauseSec = Store.defaultPause, sessionMin = Store.defaultSession))
+            for (p in pull) Store.setRule(p, Store.mindfulDefaults(Store.rule(p)))
             next()
         }, lp())
         root.addView(actions, lp())

@@ -29,6 +29,7 @@ object Break {
         Store.focusUntil = now + m * 60_000L
         Store.sessions { it.clear() } // nothing you opened before the break carries on through it
         Dnd.begin(ctx)
+        BreakQuietService.reconnect(ctx)
         BreakQuietService.breakStarted()
         scheduleEnd(ctx, Store.focusUntil)
     }
@@ -42,7 +43,11 @@ object Break {
 
     /** Called whenever Intent wakes up: if a break ended while nothing was running, finish the job. */
     fun checkEnded(ctx: Context) {
-        if (Store.dndOurs && !Store.breakActive()) Dnd.end(ctx)
+        if (Store.dndOurs && !Store.breakActive()) {
+            Dnd.end(ctx)
+            // You're back before Android got round to the alarm: no need to tell you later that it's over.
+            try { ctx.getSystemService(AlarmManager::class.java).cancel(endIntent(ctx)) } catch (_: Exception) {}
+        }
     }
 
     private fun scheduleEnd(ctx: Context, atWall: Long) {

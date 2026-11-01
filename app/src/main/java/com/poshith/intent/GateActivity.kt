@@ -15,6 +15,7 @@ import android.widget.TextView
 import com.poshith.intent.core.BlockReason
 import com.poshith.intent.core.Decision
 import com.poshith.intent.core.Feeling
+import com.poshith.intent.core.Limits
 import com.poshith.intent.core.Purpose
 import com.poshith.intent.core.Rule
 import com.poshith.intent.data.Apps
@@ -142,7 +143,18 @@ class GateActivity : BaseActivity() {
         onBars(barsListener)
 
         when (d) {
-            is Decision.Pause -> if (d.limitReached) buildLimit(col, d) else buildPause(col, d)
+            is Decision.Pause -> {
+                // Limits across all mindful apps come first: switching feeds doesn't start over.
+                val now = System.currentTimeMillis()
+                val rest = if (Store.restOn) Limits.restUntil(Store.sessionStarts, now, Store.restUntil) else 0L
+                if (rest > Store.restUntil) Store.restUntil = rest
+                when {
+                    budgetLeft() == 0 -> buildBudget(col)
+                    d.limitReached -> buildLimit(col, d)
+                    rest > now -> buildRest(col, rest)
+                    else -> buildPause(col, d)
+                }
+            }
             is Decision.Blocked -> buildBlocked(col, d)
             else -> {}
         }
@@ -221,15 +233,20 @@ class GateActivity : BaseActivity() {
         // For how long? Chosen right on the chips, no extra question.
         val mFlow = Flow(this, centered = true)
         val mChips = ArrayList<Chip>()
-        val choices = Rule.SESSION_CHOICES.filter { it <= 15 }.toMutableList()
-        if (minutes !in choices) choices += minutes
-        for (m in choices.sorted()) {
+        val usual = Rule.SESSION_CHOICES.filter { it <= 15 }.toMutableList()
+        if (minutes !in usual) usual += minutes
+        // With a daily budget, only the lengths that still fit (and it says how much is left).
+        val left = budgetLeft()
+        val choices = Limits.sessionChoices(usual.sorted(), left)
+        if (minutes !in choices) minutes = choices.lastOrNull { it <= minutes } ?: choices.first()
+        for (m in choices) {
             val c = Chip(this, "$m min")
             c.on = m == minutes
             c.setOnClickListener { minutes = m; mChips.forEach { x -> x.on = x === c }; refreshOpen() }
             mChips += c; mFlow.addView(c)
         }
         after.addView(mFlow, lp().apply { topMargin = dp(if (askWhy) 18 else 26) })
+        if (left != null) line(after, "$left of ${Store.budgetMin} min left today for all mindful apps", P.text3, 14f, 12)
 
         val plan = Store.urgePlan
         if (plan.isNotBlank()) line(after, "Your plan: when I feel the pull, I'll $plan.", P.text3, 14f, 22)
@@ -286,6 +303,37 @@ class GateActivity : BaseActivity() {
             else -> "Open for $minutes min"
         }
         styleButton(b, Kind.OUTLINE, enabled = ready)
+    }
+
+    /** Minutes left of today's budget for all mindful apps, or null when there's none. */
+    private fun budgetLeft(): Int? = Limits.budgetLeft(Store.budgetMin, Stats.day().plannedMin)
+
+    private fun buildBudget(col: LinearLayout) {
+        title(col, "TODAY'S BUDGET", label)
+        line(col, "Your chosen limit is reached: ${Store.budgetMin} minutes for all your mindful apps today.", P.text2, 16f, 14)
+        line(col, "Tomorrow it starts fresh.", P.text3, 15f, 6)
+        val plan = Store.urgePlan
+        if (plan.isNotBlank()) line(col, "Your plan: $plan.", P.text3, 14f, 22)
+        bar.addView(button("Not now", Kind.PRIMARY) { notNow() }, lp())
+        bar.addView(button("Unlock 5 minutes", Kind.PLAIN) {
+            confirmPhrase("Unlock $label?", "You set this budget while you were calm. If you really need it, type the phrase.",
+                "open ${label.lowercase()}", "Open for 5 min") { proceed(5, "Past my budget") }
+        }, lp().apply { topMargin = dp(6) })
+    }
+
+    /** Several sessions close together: mindful apps rest for a few minutes. */
+    private fun buildRest(col: LinearLayout, until: Long) {
+        val at = DateFormat.getTimeFormat(this).format(Date(until))
+        title(col, "A SHORT REST", label)
+        line(col, "${Limits.REST_AFTER_SESSIONS} sessions in ${Limits.REST_WINDOW_MS / 60_000} minutes. Mindful apps rest until $at.", P.text2, 16f, 14)
+        val plan = Store.urgePlan
+        line(col, if (plan.isNotBlank()) "Your plan: $plan." else "A good moment to look up from the screen.", P.text3, 15f, 10)
+        bar.addView(button("Put the phone down", Kind.PRIMARY) {
+            notNow()
+            // Locks the screen when Focus Guard can; otherwise it's simply back home.
+            FocusGuardService.lockScreen()
+        }, lp())
+        bar.addView(HoldButton(this, "Hold to skip the rest", 5000) { Store.restUntil = 0; Store.clearSessionStarts(); build() }, lp().apply { topMargin = dp(8) })
     }
 
     private fun buildLimit(col: LinearLayout, d: Decision.Pause) {
@@ -370,8 +418,14 @@ class GateActivity : BaseActivity() {
         FocusGuardService.saidNotNow(pkg)
         Store.sessions { it.close(pkg) }
         val n = Stats.notNowToday()
-        Store.flash = if (n == 1) "Not now. Nice." else "Not now. That's $n times today."
-        if (!fromLauncher) { com.poshith.intent.guard.Closer.toHome(this); com.poshith.intent.guard.Closer.silence(this) }
+        // Leaving is the easy choice, and the next thing to do is the one you picked yourself.
+        val plan = Store.urgePlan
+        Store.flash = when {
+            plan.isNotBlank() -> "Not now. Your plan: $plan."
+            n == 1 -> "Not now. Nice."
+            else -> "Not now. That's $n times today."
+        }
+        if (!fromLauncher) { com.poshith.intent.guard.Closer.toHome(this); com.poshith.intent.guard.Closer.silence(this, pkg) }
         finish()
         overridePendingTransition(0, android.R.anim.fade_out)
     }
@@ -387,6 +441,7 @@ class GateActivity : BaseActivity() {
         // when you come back; if it ever misses that, the clock still runs, so a session always ends.
         Store.sessions { it.admit(pkg, min, why, now, System.currentTimeMillis(), runningNow = true) }
         Stats.sessionStarted(pkg, min)
+        Store.noteSessionStart(System.currentTimeMillis())
         if (!guard) Reminder.schedule(this, pkg, min)
         openApp()
     }

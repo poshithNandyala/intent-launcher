@@ -222,6 +222,43 @@ fun main() {
     quick.swipe(0); quick.keepGoing(10); quick.swipe(60_000)
     check("leaving for a minute doesn't start over", quick.swipes == 2 && quick.ask() == Sitting.Ask.NONE)
 
+    // --- counting swipes: fast flicking counts every swipe, one swipe's events count once
+    val flick = Sitting()
+    var counted = 0
+    for (i in 0 until 20) if (flick.swipe(100_000L + i * 400L)) counted++
+    check("20 flicks 400 ms apart are 20 swipes", counted == 20 && flick.swipes == 20)
+    val one = Sitting()
+    for (t in 0L..500L step 100L) one.swipe(200_000L + t)
+    check("one swipe's burst of events is one swipe", one.swipes == 1)
+    val run = Sitting()
+    for (t in 0L until 3_000L step 100L) run.swipe(300_000L + t)
+    check("3 s of non-stop scrolling is several swipes", run.swipes == 3)
+    val seen = Sitting()
+    seen.swipe(400_000); seen.swipe(400_100)
+    check("the new video a scroll brought in isn't counted twice", !seen.newVideo(400_400) && seen.swipes == 1)
+    check("a new video no scroll counted is counted", seen.newVideo(402_000) && seen.swipes == 2)
+    seen.swipe(410_000)
+    seen.newVideo(410_300)
+    check("each scroll matches one new video only", seen.newVideo(410_900) && seen.swipes == 4)
+    val pages = Sitting()
+    check("seen on screen only: the first new video asks", pages.newVideo(500_000) && pages.ask() == Sitting.Ask.START)
+    pages.keepGoing(2)
+    pages.newVideo(505_000); pages.newVideo(510_000)
+    check("seen on screen only: asks again after the allowance", pages.newVideo(515_000) && pages.ask() == Sitting.Ask.MORE)
+
+    // --- one budget and a short rest, across all mindful apps
+    val min = 60_000L
+    check("no budget: no limit", Limits.budgetLeft(0, 500) == null)
+    check("budget counts every session's minutes", Limits.budgetLeft(60, 45) == 15 && Limits.budgetLeft(60, 75) == 0)
+    check("only lengths that fit are offered", Limits.sessionChoices(listOf(2, 5, 10, 15), 12) == listOf(2, 5, 10))
+    check("less than the shortest: what's left", Limits.sessionChoices(listOf(2, 5, 10), 1) == listOf(1))
+    check("nothing left: nothing offered", Limits.sessionChoices(listOf(2, 5), 0).isEmpty())
+    check("two sessions in 10 min: no rest", Limits.restUntil(listOf(0L, 3 * min), 6 * min, 0L) == 0L)
+    check("three sessions in 10 min: a 5 min rest", Limits.restUntil(listOf(0L, 3 * min, 5 * min), 7 * min, 0L) == 12 * min)
+    check("a rest that's on stays until it ends", Limits.restUntil(listOf(0L, 1 * min, 2 * min), 9 * min, 12 * min) == 12 * min)
+    check("sessions spread out: no rest", Limits.restUntil(listOf(0L, 6 * min, 12 * min), 13 * min, 0L) == 0L)
+    check("one rest doesn't chain into the next", Limits.restUntil(listOf(1 * min, 2 * min, 4 * min), 10 * min, 9 * min) == 0L)
+
     // --- lessons are complete
     check("lessons have sources", Lessons.all.all { it.source.isNotBlank() && it.body.length > 60 && it.tryThis.isNotBlank() })
     check("lesson ids unique", Lessons.all.map { it.id }.toSet().size == Lessons.all.size)

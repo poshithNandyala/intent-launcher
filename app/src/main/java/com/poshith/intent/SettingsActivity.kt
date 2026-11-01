@@ -14,15 +14,17 @@ import android.view.ViewGroup
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import com.poshith.intent.core.Catalog
+import com.poshith.intent.core.Feed
 import com.poshith.intent.core.Mode
 import com.poshith.intent.core.Rule
 import com.poshith.intent.data.AppEntry
 import com.poshith.intent.data.Apps
+import com.poshith.intent.data.Stats
 import com.poshith.intent.data.Store
 import com.poshith.intent.data.Usage
+import com.poshith.intent.guard.BreakQuietService
+import com.poshith.intent.guard.Dnd
 import com.poshith.intent.guard.Launch
-import com.poshith.intent.data.Stats
-import com.poshith.intent.core.Feed
 import com.poshith.intent.guard.ReelsGuardService
 import com.poshith.intent.guard.Reminder
 import com.poshith.intent.ui.AppPicker
@@ -150,15 +152,24 @@ class SettingsActivity : BaseActivity() {
 
     private fun pageMain() {
         header("Settings")
-        val guard = Launch.isGuardOn(this)
-        if (!Launch.isDefaultHome(this) || !guard) {
+        val guardHealth = Launch.guardHealth(this)
+        val guard = guardHealth != Launch.Health.OFF
+        val home = Launch.isDefaultHome(this)
+        if (!home || guardHealth != Launch.Health.ON) {
             val warn = vbox().apply {
                 setPadding(dp(20), dp(16), dp(20), dp(16))
                 background = com.poshith.intent.ui.rounded(P.surface, dp(18).toFloat())
             }
-            warn.addView(text(if (!Launch.isDefaultHome(this)) "Intent isn't your home screen yet" else "Focus Guard is off", 17f, P.text, Fonts.medium(this)))
-            warn.addView(text(if (!Launch.isDefaultHome(this)) "Set it as your home app so your phone opens to calm, chosen apps."
-                else "Without it, Intent only pauses apps you open from here. Turn it on to pause them from notifications and end sessions on time.", 15f, P.text2).apply { setPadding(0, dp(6), 0, dp(10)) })
+            warn.addView(text(when {
+                !home -> "Intent isn't your home screen yet"
+                guardHealth == Launch.Health.STOPPED -> "Focus Guard has stopped"
+                else -> "Focus Guard is off"
+            }, 17f, P.text, Fonts.medium(this)))
+            warn.addView(text(when {
+                !home -> "Set it as your home app so your phone opens to calm, chosen apps."
+                guardHealth == Launch.Health.STOPPED -> "Its switch is still on, but Android stopped it, so pauses and session ends won't happen. Turning it off and on again fixes it."
+                else -> "Without it, Intent only pauses apps you open from here. Turn it on to pause them from notifications and end sessions on time."
+            }, 15f, P.text2).apply { setPadding(0, dp(6), 0, dp(10)) })
             warn.addView(button("Fix this", Kind.PRIMARY) { go("protection") }, lp(ViewGroup.LayoutParams.WRAP_CONTENT))
             col.addView(warn, lp().apply { leftMargin = dp(16); rightMargin = dp(16); topMargin = dp(8) })
         }
@@ -175,7 +186,11 @@ class SettingsActivity : BaseActivity() {
             " · morning quiet " + (if (Store.morningQuietMin > 0) "${Store.morningQuietMin} min" else "off"), null) { go("focus") })
         add(row("Your plan for the pull", Store.urgePlan.ifBlank { "Not set" }, null) { go("plan") })
         add(sectionTitle("Your phone"))
-        add(row("Protection and permissions", if (guard) "Focus Guard on" else "Focus Guard off", null) { go("protection") })
+        add(row("Protection and permissions", when (guardHealth) {
+            Launch.Health.ON -> "Focus Guard on"
+            Launch.Health.STOPPED -> "Focus Guard stopped: tap to fix"
+            Launch.Health.OFF -> "Focus Guard off"
+        }, null) { go("protection") })
         add(row("Quiet notifications", "Silence everything that isn't a person", null) { go("notifications") })
         add(row("Grayscale", "Make feeds duller, on purpose", null) { go("grayscale") })
         add(row("Gestures", null, null) { go("gestures") })
@@ -286,7 +301,8 @@ class SettingsActivity : BaseActivity() {
             val removed = before - sel.toSet()
             val added = sel.toSet() - before
             fun apply() {
-                for (p in added) Store.setRule(p, Store.rule(p).copy(mode = mode, pauseSec = Store.defaultPause, sessionMin = Store.defaultSession))
+                for (p in added) Store.setRule(p, if (mode == Mode.MINDFUL) Store.mindfulDefaults(Store.rule(p))
+                    else Store.rule(p).copy(mode = mode, pauseSec = Store.defaultPause, sessionMin = Store.defaultSession))
                 for (p in removed) Store.setMode(p, Mode.NORMAL)
                 ov.close(); render()
             }
@@ -315,23 +331,37 @@ class SettingsActivity : BaseActivity() {
         add(sectionTitle("Usual session"))
         add(chips(Rule.SESSION_CHOICES, Store.defaultSession, { "$it min" }) { v -> changeDefaults(session = v) })
         add(sectionTitle("Daily sessions per app"))
-        val limit = Store.packagesWithMode(Mode.MINDFUL).firstOrNull()?.let { Store.rule(it).dailyOpenLimit } ?: 0
-        add(chips(Rule.LIMIT_CHOICES, limit, { if (it == 0) "No limit" else "$it" }) { v -> changeDefaults(limit = v) })
-        val esc = Store.packagesWithMode(Mode.MINDFUL).firstOrNull()?.let { Store.rule(it).escalate } ?: true
-        add(toggleRow("Pause grows each time", "+2 s for every session after the second one today (max 20 s)", esc) { on -> changeDefaults(escalate = on) })
+        add(chips(Rule.LIMIT_CHOICES, Store.defaultLimit, { if (it == 0) "No limit" else "$it" }) { v -> changeDefaults(limit = v) })
+        add(toggleRow("Pause grows each time", "+2 s for every session after the second one today (max 20 s)", Store.defaultEscalate) { on -> changeDefaults(escalate = on) })
+        // Across all of them: one budget, and a short rest after sessions close together.
+        add(sectionTitle("One budget for all of them"))
+        add(paragraph("Every session takes its minutes from one daily total, so moving from one app to another doesn't start over.", 14.5f, P.text3))
+        add(chips(com.poshith.intent.core.Limits.BUDGET_CHOICES, Store.budgetMin, { if (it == 0) "Off" else "$it min" }) { v ->
+            val cur = Store.budgetMin
+            val looser = cur > 0 && (v == 0 || v > cur)
+            if (looser) confirmLoosen("Allow more time?", if (v == 0) "Turns the daily budget off." else "From $cur to $v minutes a day.") { Store.budgetMin = v; render() }
+            else { Store.budgetMin = v; render() }
+        })
+        add(toggleRow("A short rest after 3 sessions in 10 minutes", "Mindful apps wait 5 minutes, then open as usual", Store.restOn) { on ->
+            if (!on) confirmLoosen("Turn off the short rest?", "Sessions close together won't get a rest.") { Store.restOn = false; render() }
+            else { Store.restOn = true; render() }
+        })
         add(toggleRow("Ask how I feel", "Naming the feeling is where the habit loop breaks", Store.askFeeling) { Store.askFeeling = it })
     }
 
     private fun changeDefaults(pause: Int? = null, session: Int? = null, limit: Int? = null, escalate: Boolean? = null) {
         val pkgs = Store.packagesWithMode(Mode.MINDFUL)
-        val cur = pkgs.firstOrNull()?.let { Store.rule(it) } ?: Rule(Mode.MINDFUL, Store.defaultPause, Store.defaultSession)
+        val cur = Store.mindfulDefaults()
         val looser = (pause != null && pause < Store.defaultPause) ||
             (session != null && session > Store.defaultSession) ||
             (limit != null && (limit == 0 && cur.dailyOpenLimit > 0 || (limit > cur.dailyOpenLimit && cur.dailyOpenLimit > 0))) ||
             (escalate == false && cur.escalate)
         fun apply() {
+            // Saved as the defaults too, so apps you make mindful later get the same rule.
             pause?.let { Store.defaultPause = it }
             session?.let { Store.defaultSession = it }
+            limit?.let { Store.defaultLimit = it }
+            escalate?.let { Store.defaultEscalate = it }
             for (p in pkgs) {
                 var r = Store.rule(p)
                 pause?.let { r = r.copy(pauseSec = it) }
@@ -460,13 +490,27 @@ class SettingsActivity : BaseActivity() {
         add(row("Home screen", if (home) "Intent is your home app" else "Needed: otherwise your phone opens to your old launcher", if (home) "On" else "Set") {
             if (!home) Launch.requestHome(this) else Launch.homeSettings(this)
         })
-        val guard = Launch.isGuardOn(this)
-        add(row("Focus Guard", if (guard) "Pauses mindful apps from anywhere and ends sessions on time"
-            else "Off: pauses only apps opened from Intent; sessions end with a notification", status(guard)) { guardSheet(this) })
+        // Each switch says whether it's really working, not just whether it's switched on.
+        fun healthRow(title: String, h: Launch.Health, on: String, off: String, open: () -> Unit) {
+            val r = row(title, when (h) {
+                Launch.Health.ON -> on
+                Launch.Health.STOPPED -> "Switched on, but Android stopped it. Tap to fix."
+                Launch.Health.OFF -> off
+            }, when (h) { Launch.Health.ON -> "On"; Launch.Health.STOPPED -> "Stopped"; Launch.Health.OFF -> "Off" }) { open() }
+            if (h == Launch.Health.STOPPED) (r.findViewWithTag<android.widget.TextView>("value"))?.setTextColor(P.warn)
+            add(r)
+        }
+        healthRow("Focus Guard", Launch.guardHealth(this), "Pauses mindful apps from anywhere and ends sessions on time",
+            "Off: pauses only apps opened from Intent; sessions end with a notification") { guardSheet(this) }
+        healthRow("Shorts & Reels guard", Launch.reelsHealth(this), "Steps in when you start swiping through Shorts or Reels",
+            "Off: Shorts and Reels play without a pause") { reelsSheet(this) }
+        healthRow("Real break: no notifications", Launch.quietHealth(this), "Only calls get through a real break; the rest wait for you",
+            "Off: notifications still come in during a real break") {
+            if (!BreakQuietService.hasAccess(this)) BreakQuietService.requestAccess(this)
+            else if (!Dnd.hasAccess(this)) Dnd.requestAccess(this)
+            else BreakQuietService.requestAccess(this) // stopped: switching it off and on reconnects it
+        }
         val usage = Usage.hasAccess(this)
-        val reels = ReelsGuardService.isOn(this)
-        add(row("Shorts & Reels guard", if (reels) "Steps in when you start swiping through Shorts or Reels"
-            else "Off: Shorts and Reels play without a pause", status(reels)) { reelsSheet(this) })
         add(row("Usage access", if (usage) "Honest unlock counts and minutes, computed on the phone" else "Optional: for unlock counts and minutes", status(usage)) { usageSheet() })
         if (Build.VERSION.SDK_INT >= 33) {
             val n = Reminder.canNotify(this)
@@ -689,8 +733,15 @@ class SettingsActivity : BaseActivity() {
 }
 
 /** Focus Guard explanation with Android's "restricted settings" help for apps installed from a file. */
+/** Shown at the top of a service's sheet when its switch is on but Android stopped it. */
+private fun stoppedNote(a: BaseActivity, s: Sheet, name: String) {
+    s.add(a.text("$name has stopped. Its switch is still on, but Android stopped it (some phones do after an update, or to save battery). In the list, turn “Intent · $name” off and on again. To keep it running, let Intent run without battery restrictions.", 15f, P.warn).apply { setLineSpacing(0f, 1.25f) }, 24)
+    s.add(a.button("Battery settings for Intent", Kind.PLAIN) { Launch.ownAppInfo(a) })
+}
+
 fun reelsSheet(a: BaseActivity) {
     val s = Sheet(a, "Shorts & Reels guard", "Steps in when you start swiping through YouTube Shorts or Instagram Reels, and counts them.")
+    if (Launch.reelsHealth(a) == Launch.Health.STOPPED) stoppedNote(a, s, "Shorts & Reels")
     s.add(a.text("What it uses: Android's accessibility service, told only about scrolling inside YouTube and Instagram. It looks at view names, like “reel_recycler”, never at text.\n\nWhat it can't do: read your messages or anything you type, see other apps, or go online. Intent has no internet permission.", 15f, P.text2).apply { setLineSpacing(0f, 1.25f) }, 24)
     s.add(a.button("Open accessibility settings", Kind.PRIMARY) { s.dismiss(); Launch.accessibilitySettings(a) })
     s.add(a.text("In the list, choose “Intent · Shorts & Reels” and turn it on.\n\nIf Android says the setting is restricted (it does this for apps installed from a file): open Intent's App info, tap ⋮ at the top right, choose “Allow restricted settings”, then try again.", 14f, P.text3).apply { setLineSpacing(0f, 1.25f) }, 24)
@@ -704,6 +755,7 @@ fun reelsSheet(a: BaseActivity) {
 
 fun guardSheet(a: BaseActivity) {
     val s = Sheet(a, "Focus Guard", "Lets Intent show your pause even when a mindful app is opened from a notification or the recents screen, and end the sessions you choose on time.")
+    if (Launch.guardHealth(a) == Launch.Health.STOPPED) stoppedNote(a, s, "Focus Guard")
     s.add(a.text("What it uses: Android's accessibility service, only to learn which app is in front (its package name).\n\nWhat it can't do: read your screen, messages or passwords, see notifications, or go online. Intent has no internet permission.", 15f, P.text2).apply { setLineSpacing(0f, 1.25f) }, 24)
     s.add(a.button("Open accessibility settings", Kind.PRIMARY) { s.dismiss(); Launch.accessibilitySettings(a) })
     s.add(a.text("In the list, choose “Intent · Focus Guard” and turn it on.\n\nIf Android says the setting is restricted (it does this for apps installed from a file): open Intent's App info, tap ⋮ at the top right, choose “Allow restricted settings”, then try again.", 14f, P.text3).apply { setLineSpacing(0f, 1.25f) }, 24)

@@ -23,6 +23,21 @@ record() { # name
     intent_crashes
     echo "== $name (pid: $(adb shell pidof $PKG || echo none))"
 }
+# Checks: a step that doesn't end where it should is a failure, listed in failures.txt; the run exits 1.
+: > "$OUT/failures.txt"
+fail() { echo "   FAIL: $*"; echo "$*" >> "$OUT/failures.txt"; }
+expect_top() { # activity step: that activity is in front now
+    top | grep -q "$1" || fail "$2: expected $1 in front, found: $(top | sed 's/.*{//; s/}.*//')"
+}
+expect_text() { # text step: the step's screen text (from record) contains it
+    local f; f=$(ls "$OUT"/*-"$2".txt 2>/dev/null | tail -1)
+    grep -qF "$1" "$f" 2>/dev/null || fail "$2: expected \"$1\" on screen"
+}
+shade_closed() { # step: the notification shade isn't open
+    local focus; focus=$(adb shell dumpsys window | grep -m1 mCurrentFocus)
+    echo "$focus" | grep -qiE "NotificationShade|StatusBar\b" && fail "$1: the notification shade is open ($focus)"
+    return 0
+}
 # A slow emulator sometimes puts "Pixel Launcher isn't responding" over everything; answer it first.
 tap() { python3 scripts/ui.py dismiss && sleep 1; python3 scripts/ui.py tap "$1" || echo "   (couldn't find \"$1\")"; }
 top() { adb shell dumpsys activity activities | grep -m1 -E "topResumedActivity|mResumedActivity"; }
@@ -120,6 +135,7 @@ if adb shell pm list packages | grep -q "package:com.google.android.youtube"; th
     adb shell monkey -p com.google.android.youtube -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
     wait_top GateActivity 15
     snap guard-pause
+    expect_top GateActivity guard-pause
     adb shell input keyevent KEYCODE_BACK       # back = "Not now" on the pause screen
     snap guard-not-now
     sleep 3
@@ -159,6 +175,7 @@ if adb shell pm list packages | grep -q "package:com.google.android.youtube"; th
     snap session-started
     sleep 135
     snap session-2-min-later    # expected: YouTube closed, Intent's home in front (no time's-up screen)
+    expect_top HomeActivity session-2-min-later
     adb shell input keyevent KEYCODE_HOME
 fi
 
@@ -184,18 +201,24 @@ tap "15 min"
 tap "Start the break"
 tap "Start anyway"          # only if a switch is missing (it shouldn't be)
 record break-screen
+expect_text "Be here." break-screen
 adb shell settings get global zen_mode > "$OUT/break-zen.txt" 2>&1   # 1 = Do Not Disturb, priority only
 # A notification from another app during the break: expected nowhere (not on screen, not in the list).
 adb shell cmd notification post -S bigtext -t "Sale ends tonight" smoke "Tap to see the deals" > /dev/null 2>&1
 sleep 3
 adb shell cmd notification list > "$OUT/break-notifications.txt" 2>&1
+grep -q "|smoke|" "$OUT/break-notifications.txt" && fail "break: another app's notification still showing during the break"
+[ "$(tr -d '\r\n ' < "$OUT/break-zen.txt")" = "1" ] || fail "break: Do Not Disturb isn't on (zen_mode $(cat "$OUT/break-zen.txt"))"
 sleep 4 # Focus Guard comes back after the screen read
 adb shell cmd statusbar expand-notifications > /dev/null 2>&1
 sleep 2
 snap break-shade            # expected: the break screen, the shade closed again
+shade_closed break-shade
+expect_top HomeActivity break-shade
 adb shell monkey -p com.google.android.youtube -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
 wait_top GateActivity 15
 snap break-blocks-youtube
+expect_top GateActivity break-blocks-youtube
 adb shell input keyevent KEYCODE_BACK
 sleep 2
 read -r hx hy < <(python3 scripts/ui.py coords "Hold to end the break" | head -1)
@@ -215,14 +238,17 @@ if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; 
     sleep 3
     flick
     snap shorts-first-swipe        # expected: the feed closed, ReelsActivity over Intent's home
+    expect_top ReelsActivity shorts-first-swipe
     record shorts-pause
     tap "Watch 5 more"
     sleep 4 # the guard comes back after the screen read
     for _ in $(seq 1 6); do flick; sleep 2.5; done
     snap shorts-after-five         # expected: ReelsActivity again, "That's 7 in a row"
     record shorts-pause-again
+    expect_text "That's 7 in a row" shorts-pause-again
     tap "Close"
     snap shorts-closed             # expected: Intent's home
+    expect_top HomeActivity shorts-closed
     record home-after-shorts
 fi
 
@@ -236,11 +262,18 @@ swipe 50 80 50 25
 record basic-swipe-up
 
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1
-if crashed; then echo "CRASH:"; cat "$OUT/crash.txt"; fi
+if crashed; then echo "CRASH:"; cat "$OUT/crash.txt"; fail "Intent crashed (crash.txt)"; fi
 
 # The safety net: a forced crash must show Intent's own error screen, not just close.
 adb shell am crash $PKG > /dev/null 2>&1
 sleep 4
 adb exec-out screencap -p > "$OUT/99-crash-screen.png" 2>/dev/null
 python3 scripts/ui.py texts > "$OUT/99-crash-screen.txt" 2>&1
+grep -qF "Copy details" "$OUT/99-crash-screen.txt" || fail "crash screen: Intent's own error screen didn't show"
+
+if [ -s "$OUT/failures.txt" ]; then
+    echo "== $(wc -l < "$OUT/failures.txt") check(s) failed:"; cat "$OUT/failures.txt"
+    exit 1
+fi
+echo "== all checks passed"
 exit 0

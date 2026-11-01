@@ -19,6 +19,10 @@ class IntentApp : Application() {
         fun onUnlock(l: () -> Unit) { unlockListeners += l }
         fun removeUnlock(l: () -> Unit) { unlockListeners -= l }
 
+        /** When this process started: services that should be running get a few seconds to connect. */
+        @Volatile var startedAt = 0L
+            private set
+
         /** System broadcasts (screen off, unlock). Explicitly exported on Android 13+ so no phone maker's rules can reject it. */
         fun listen(ctx: Context, r: BroadcastReceiver, f: IntentFilter) {
             try {
@@ -32,6 +36,8 @@ class IntentApp : Application() {
         override fun onReceive(c: Context, i: Intent) {
             Store.lastUnlockElapsed = SystemClock.elapsedRealtime()
             Store.noteUnlock()
+            // A break that ran out while the phone slept ends now, even if Android delayed its alarm.
+            com.poshith.intent.guard.Break.checkEnded(c)
             unlockListeners.forEach { it() }
         }
     }
@@ -42,6 +48,7 @@ class IntentApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        startedAt = SystemClock.elapsedRealtime()
         // The crash screen runs in its own small process and needs none of this.
         if (Crash.isCrashProcess(this)) return
         Crash.install(this)
@@ -56,5 +63,6 @@ class IntentApp : Application() {
         })
         Apps.refresh(this)
         com.poshith.intent.guard.Break.checkEnded(this)
+        com.poshith.intent.guard.BreakQuietService.reconnect(this)
     }
 }

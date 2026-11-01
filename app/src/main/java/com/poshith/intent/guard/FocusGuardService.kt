@@ -39,6 +39,8 @@ class FocusGuardService : AccessibilityService() {
         private const val GATE = "#gate"
         private const val SELF = "#self"
         private const val OFF = "#off"
+        /** A call is ringing or going on: nothing is paused, and no app's minutes count. */
+        private const val CALL = "#call"
 
         fun lockScreen(): Boolean {
             val s = instance ?: return false
@@ -71,6 +73,8 @@ class FocusGuardService : AccessibilityService() {
         private fun justSentHome(pkg: String): Boolean =
             synchronized(sentHomeAt) { SystemClock.elapsedRealtime() - (sentHomeAt[pkg] ?: -SENT_HOME_MS) < SENT_HOME_MS }
         private const val SENT_HOME_MS = 4_000L
+        /** The heads-up comes this long before a session ends. */
+        private const val WARN_MS = 60_000L
 
         /** The status bar, notification shade and quick settings (Xiaomi draws its control centre in a plugin). */
         private val SYSTEM_UI = setOf("com.android.systemui", "miui.systemui.plugin")
@@ -154,9 +158,16 @@ class FocusGuardService : AccessibilityService() {
             }
         } else {
             if (pkg in ignored) return
-            // A call screen (WhatsApp, Telegram, Meet...: an incoming or ongoing call) always shows,
-            // in every mode and every break. Intent never stands between you and a call.
-            if (isCallScreen(cls) || Calls.active(this)) return
+            // A call (ringing, or a call screen: phone, WhatsApp, Telegram, Meet...) always shows, in every
+            // mode and every break: Intent never stands between you and a call. And a call doesn't use up
+            // an app's minutes: its session waits, and picks up again when you're back in the app.
+            val callScreen = isCallScreen(cls)
+            if (callScreen || Calls.active(this)) {
+                callFront = if (callScreen) null else pkg
+                moveTo(CALL)
+                h.removeCallbacks(callCheck); h.postDelayed(callCheck, 2_000)
+                return
+            }
             pkg
         }
         if (next == current) {
@@ -172,6 +183,20 @@ class FocusGuardService : AccessibilityService() {
     }
 
     private fun isApp(s: String) = !s.startsWith("#")
+
+    /** During a call: the last app that came to the front (not the call screen), to pick up after the call. */
+    private var callFront: String? = null
+    private val callCheck = object : Runnable {
+        override fun run() {
+            if (current != CALL) return
+            if (Calls.active(this@FocusGuardService)) { h.postDelayed(this, 2_000); return }
+            // The call is over. If an app came to the front during it, that's where you are now: its
+            // session picks up (or it gets the pause, like any other open).
+            val back = callFront
+            callFront = null
+            if (back != null) moveTo(back)
+        }
+    }
 
     private fun isCallScreen(cls: String): Boolean {
         val c = cls.substringAfterLast('.').lowercase()
@@ -203,10 +228,11 @@ class FocusGuardService : AccessibilityService() {
         if (isApp(prev)) {
             val hadSession = Store.sessions { it.isActive(prev, now) }
             Store.sessions { it.stop(prev, now) }
-            if (timing == prev) { h.removeCallbacks(expireRunnable); timing = null }
+            if (timing == prev) { h.removeCallbacks(expireRunnable); h.removeCallbacks(warnRunnable); timing = null }
             // Its minutes stop counting while you're away, so its video shouldn't keep playing either
             // (in a little picture-in-picture window, say). Intent's own screens don't count as away.
-            if (hadSession && next != GATE && next != SELF && Store.rule(prev).mode == com.poshith.intent.core.Mode.MINDFUL) Closer.silence(this)
+            if (hadSession && next != GATE && next != SELF && next != CALL && !Calls.active(this) &&
+                Store.rule(prev).mode == com.poshith.intent.core.Mode.MINDFUL) Closer.silence(this, prev, broad = false)
         }
         h.removeCallbacks(recheck)
         if (isApp(next)) {
@@ -259,6 +285,18 @@ class FocusGuardService : AccessibilityService() {
         timing = pkg
         h.removeCallbacks(expireRunnable)
         h.postDelayed(expireRunnable, rem.coerceAtLeast(500))
+        // A quiet heads-up a minute before the end, so time's up never comes out of nowhere.
+        h.removeCallbacks(warnRunnable)
+        if (rem > WARN_MS + 30_000) h.postDelayed(warnRunnable, rem - WARN_MS)
+    }
+
+    private val warnRunnable = Runnable {
+        val pkg = timing ?: return@Runnable
+        if (current != pkg || Calls.active(this)) return@Runnable
+        val rem = Store.sessions { it.remainingMs(pkg, SystemClock.elapsedRealtime()) }
+        if (rem !in 20_000..(WARN_MS + 5_000)) return@Runnable
+        val label = com.poshith.intent.data.Apps.labelFor(this, pkg)
+        try { android.widget.Toast.makeText(this, "1 minute left on $label", android.widget.Toast.LENGTH_LONG).show() } catch (_: Exception) {}
     }
 
     private fun onExpire() {

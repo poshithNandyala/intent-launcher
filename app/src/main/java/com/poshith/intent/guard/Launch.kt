@@ -250,13 +250,35 @@ object Launch {
         return r?.activityInfo?.packageName == ctx.packageName
     }
 
-    fun isGuardOn(ctx: Context): Boolean {
-        if (FocusGuardService.running) return true
-        return try {
-            val enabled = Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
-            val me = ComponentName(ctx, FocusGuardService::class.java)
-            enabled.split(':').any { ComponentName.unflattenFromString(it) == me }
-        } catch (_: Exception) { false }
+    fun isGuardOn(ctx: Context): Boolean = FocusGuardService.running || switchedOn(ctx, FocusGuardService::class.java)
+
+    /** Is this accessibility service switched on in Android's settings (whether or not it's running)? */
+    fun switchedOn(ctx: Context, service: Class<*>): Boolean = try {
+        val enabled = Settings.Secure.getString(ctx.contentResolver, Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: ""
+        val me = ComponentName(ctx, service)
+        enabled.split(':').any { ComponentName.unflattenFromString(it) == me }
+    } catch (_: Exception) { false }
+
+    /**
+     * Switched on is one thing, running is another: some phones stop a service (after an update, or to
+     * save battery) and leave its switch on, and then nothing works. Settings says so honestly.
+     */
+    enum class Health { OFF, STOPPED, ON }
+
+    fun health(switchedOn: Boolean, running: Boolean): Health = when {
+        running -> Health.ON
+        !switchedOn -> Health.OFF
+        // Intent itself just started: the service may still be connecting.
+        SystemClock.elapsedRealtime() - com.poshith.intent.IntentApp.startedAt < 8_000 -> Health.ON
+        else -> Health.STOPPED
+    }
+
+    fun guardHealth(ctx: Context) = health(switchedOn(ctx, FocusGuardService::class.java), FocusGuardService.running)
+    fun reelsHealth(ctx: Context) = health(switchedOn(ctx, ReelsGuardService::class.java), ReelsGuardService.running)
+    /** The real break's notification side: Notification access (it also brings Do Not Disturb access). */
+    fun quietHealth(ctx: Context): Health {
+        BreakQuietService.reconnect(ctx)
+        return health(BreakQuietService.hasAccess(ctx) && Dnd.hasAccess(ctx), BreakQuietService.connected && Dnd.hasAccess(ctx))
     }
 
     fun tryStart(ctx: Context, i: Intent, fail: String?): Boolean = try {

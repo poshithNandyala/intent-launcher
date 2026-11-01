@@ -29,15 +29,16 @@ Your answer to "How are you feeling?" is never saved. It only changes the sugges
 | Home app role | To be your home screen. |
 | Query installed apps (`<queries>`) | To list the apps you can choose from and open them. |
 | Accessibility (Focus Guard, optional) | To notice when a mindful app opens from a notification, recents or a link, to count session minutes, and to close the app when they're used. During a real break it keeps the notification shade closed. Also used for double-tap to lock and swipe down for notifications. |
-| Close other apps' background processes | When a session's minutes are up, Intent closes the app; on Android 13 and older it also ends the app's background process (newer Android only lets an app end its own). It briefly takes audio focus so nothing keeps playing. |
+| Close other apps' background processes | When a session's minutes are up, Intent closes the app; on Android 13 and older it also ends the app's background process (newer Android only lets an app end its own). Without Notification access, it briefly takes audio focus so nothing keeps playing. |
 | Accessibility (Shorts & Reels guard, optional) | To notice when you start swiping through YouTube Shorts or Instagram Reels, count those swipes and show the pause. Told only about scrolling in those two apps. |
 | Usage access (optional) | Unlock count and minutes in mindful apps on the home screen and in Your week. |
 | Notifications (optional) | A "your minutes are up" reminder when Focus Guard is off. Intent sends nothing else. |
-| Notification access (optional) | During a real break only: sets every notification that isn't a call (or an alarm) aside, and they come back by themselves after the break. Intent doesn't keep, copy or send them, and outside a break it does nothing. |
+| Notification access (optional) | During a real break: sets every notification that isn't a call (or an alarm) aside, and they come back by themselves after the break. When Intent closes an app (time's up, or the Shorts pause), it also pauses that app's own video or music player, so your music in other apps keeps playing; for this it sees which apps are playing, not what. Intent doesn't keep, copy or send any of it. |
 | Do Not Disturb access (optional) | During a real break, silence everything except calls and alarms, then put Do Not Disturb back exactly as it was. It can't read your notifications. |
 | Expand status bar | Swipe down on the home screen to open notifications. |
 | Request uninstall | "Uninstall" in an app's long-press menu. Android always asks you to confirm. |
 | Set alarm | Tapping the clock opens your alarms. |
+| Exact alarms | A real break ends exactly when it should, with the phone asleep too, and the phone tells you it's over. |
 
 ## Your control
 

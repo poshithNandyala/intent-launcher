@@ -78,18 +78,42 @@ class Sitting {
     var continues = 0
         private set
     private var allowedUntil = 0
-    private var lastSwipeAt = 0L
     private var started = false
+    /** The last scroll event, and when the swipe it belongs to started. */
+    private var lastEventAt = 0L
+    private var burstStart = 0L
+    /** The last swipe counted from scrolling, until the new video it brought in has been seen. */
+    private var unmatchedAt = -1L
 
-    /** A scroll of the feed's pager at [now] (ms). True if it's a new swipe, not more of the last one. */
+    /**
+     * A scroll of the feed's pager at [now] (ms). True if it starts a new swipe, not more of the last one.
+     * One swipe is a burst of scroll events close together: a pause starts the next swipe, and so does a
+     * burst that's gone on longer than one swipe can (flicking fast runs swipes together).
+     */
     fun swipe(now: Long): Boolean {
-        if (started && now - lastSwipeAt > GAP_MS) reset()
-        val fresh = !started || now - lastSwipeAt > SWIPE_MS
+        if (started && now - lastEventAt > GAP_MS && now - lastCountAt > GAP_MS) reset()
+        val fresh = !started || now - lastEventAt > QUIET_MS || now - burstStart > BURST_MS
         started = true
-        lastSwipeAt = now
-        if (fresh) swipes++
+        lastEventAt = now
+        if (fresh) { burstStart = now; count(now); unmatchedAt = now }
         return fresh
     }
+
+    /**
+     * A different video came to the front at [now] (seen on screen, a moment after the scroll). True if it's
+     * a swipe the scrolling didn't already count; each counted scroll is matched to one new video.
+     */
+    fun newVideo(now: Long): Boolean {
+        if (started && now - lastEventAt > GAP_MS && now - lastCountAt > GAP_MS) reset()
+        started = true
+        if (unmatchedAt >= 0 && now - unmatchedAt < MATCH_MS) { unmatchedAt = -1; return false }
+        unmatchedAt = -1
+        count(now)
+        return true
+    }
+
+    private var lastCountAt = 0L
+    private fun count(now: Long) { swipes++; lastCountAt = now }
 
     /** After a new swipe: should Intent step in? */
     fun ask(): Ask = when {
@@ -112,11 +136,16 @@ class Sitting {
         continues = 0
         allowedUntil = 0
         started = false
+        unmatchedAt = -1
     }
 
     companion object {
-        /** Scroll events closer together than this are one swipe (the page settling). */
-        const val SWIPE_MS = 600L
+        /** Scroll events closer together than this belong to one swipe (the drag and the page settling). */
+        const val QUIET_MS = 350L
+        /** One swipe lasts at most this long; a longer run of scrolling is several swipes. */
+        const val BURST_MS = 1_200L
+        /** A new video seen this soon after a counted scroll is the one that scroll brought in. */
+        const val MATCH_MS = 1_500L
         /** This long without a swipe, and the next one starts a new sitting. */
         const val GAP_MS = 3 * 60_000L
     }

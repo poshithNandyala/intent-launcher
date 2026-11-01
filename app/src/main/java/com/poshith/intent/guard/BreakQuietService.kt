@@ -42,8 +42,17 @@ class BreakQuietService : NotificationListenerService() {
             if (!Launch.tryStart(ctx, i, null)) Launch.tryStart(ctx, android.content.Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"), "Open Settings > Notifications > Notification access")
         }
 
-        /** A break just started: clear what's already showing. */
+        /** A break just started: set aside what's already showing. */
         fun breakStarted() { instance?.let { s -> try { s.activeNotifications?.forEach { s.consider(it) } } catch (_: Exception) {} } }
+
+        /** Allowed in Android's settings and actually connected right now. */
+        val connected: Boolean get() = instance != null
+
+        /** Allowed, but Android dropped the connection (it can, after an update or a crash): ask for it back. */
+        fun reconnect(ctx: Context) {
+            if (connected || !hasAccess(ctx)) return
+            try { NotificationListenerService.requestRebind(ComponentName(ctx, BreakQuietService::class.java)) } catch (_: Exception) {}
+        }
     }
 
     private var dialers: Set<String> = emptySet()
@@ -70,10 +79,9 @@ class BreakQuietService : NotificationListenerService() {
         if (keep(sbn)) return
         val left = Store.focusUntil - System.currentTimeMillis()
         if (left <= 0) return
-        try { snoozeNotification(sbn.key, left.coerceAtMost(CHUNK_MS)) } catch (_: Exception) {
-            // Some notifications can't be snoozed: clear them if they can be cleared.
-            try { if (sbn.isClearable) cancelNotification(sbn.key) } catch (_: Exception) {}
-        }
+        // Set aside, never deleted: a notification Android won't snooze stays where it is (Do Not Disturb
+        // still keeps it silent and out of sight, and the shade stays closed).
+        try { snoozeNotification(sbn.key, left.coerceAtMost(CHUNK_MS)) } catch (_: Exception) {}
     }
 
     /** Calls ring and show, alarms can be stopped; Intent's own break notice stays. Nothing else. */
