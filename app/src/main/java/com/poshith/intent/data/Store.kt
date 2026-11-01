@@ -178,7 +178,7 @@ object Store {
     fun breakActive(now: Long = System.currentTimeMillis()) = focusKind == "break" && focusActive(now)
 
     /** Keep WhatsApp during a real break (its calls ring either way, as calls). */
-    var breakKeepWhatsapp: Boolean get() = bool("break_whatsapp", true); set(v) = putB("break_whatsapp", v)
+    var breakKeepWhatsapp: Boolean get() = bool("break_whatsapp", false); set(v) = putB("break_whatsapp", v)
     /** The break length you chose last time, in minutes. */
     var breakLength: Int get() = int("break_len", 30); set(v) = putI("break_len", v)
 
@@ -215,7 +215,7 @@ object Store {
     val checkIns: List<Window> get() = checkInStarts.map { Window(it, (it + checkInLength) % (24 * 60)) }
 
     /** Ask "How are you feeling?" on the pause screen. */
-    var askFeeling: Boolean get() = bool("ask_feeling", true); set(v) = putB("ask_feeling", v)
+    var askFeeling: Boolean get() = bool("ask_feeling", false); set(v) = putB("ask_feeling", v)
 
     // ------------------------------------------------------------------ sessions (see core/Sessions.kt)
     private val book = SessionBook()

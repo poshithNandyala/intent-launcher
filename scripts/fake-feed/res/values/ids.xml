@@ -1,4 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <item name="reel_recycler" type="id" />
+    <!-- Shaped like current YouTube: the scroller has no telling name, each Short has its own page view. -->
+    <item name="watch_while_layout" type="id" />
+    <item name="reel_player_page_container" type="id" />
 </resources>

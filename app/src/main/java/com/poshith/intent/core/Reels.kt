@@ -27,6 +27,27 @@ object FeedIds {
         Feed.REELS to listOf("comment", "bottom_sheet", "recycler_view_container_id"),
     )
 
+    /**
+     * Views that exist only while the full-screen feed is on screen (never in a shelf of thumbnails on
+     * the home feed). Current YouTube scrolls Shorts in a view with no telling name, so these are how
+     * Intent knows you're in Shorts at all. Per-page ones come first: each Short has its own, so a new
+     * one appearing in front is a swipe.
+     */
+    val PLAYER_PAGES = mapOf(
+        Feed.SHORTS to listOf("reel_player_page_container", "reel_player_underlay"),
+        Feed.REELS to emptyList(), // Instagram's per-reel views also appear in the home feed; its swipes are caught by the pager.
+    )
+    val PLAYER_SCREENS = mapOf(
+        Feed.SHORTS to listOf("reel_watch_fragment_root", "reel_watch_player", "shorts_video_pager", "reel_recycler"),
+        Feed.REELS to listOf("clips_viewer_view_pager", "clips_view_pager"),
+    )
+
+    /** A scroll inside a comments or other sheet, never a swipe to the next video. */
+    fun inSheet(feed: Feed, path: List<String>): Boolean {
+        val sheets = SHEETS.getValue(feed)
+        return path.any { id -> sheets.any { id.contains(it) } }
+    }
+
     /** [path]: the scrolled view's ID first, then its parents' (short names, without "package:id/"). */
     fun isFeedSwipe(feed: Feed, path: List<String>): Boolean {
         val pager = PAGER.getValue(feed)

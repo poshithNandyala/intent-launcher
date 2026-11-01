@@ -11,9 +11,10 @@ import android.provider.Settings
 import com.poshith.intent.data.Store
 
 /**
- * A real break: only calls get through. Intent shows a plain timer instead of the home screen,
- * Focus Guard keeps every other app closed, and (with "Do Not Disturb access") notifications stay
- * silent except calls and alarms. When the break ends, Do Not Disturb goes back exactly as it was.
+ * A real break: only calls get through. Intent shows a dark, quiet screen instead of the home screen
+ * (no timer to watch), Focus Guard keeps every other app closed, "Do Not Disturb access" keeps every
+ * sound but calls and alarms off, and "Notification access" sets every notification but calls aside
+ * until the break is over. When it ends, Do Not Disturb goes back exactly as it was.
  */
 object Break {
     const val MAX_MIN = 8 * 60
@@ -27,6 +28,7 @@ object Break {
         Store.focusUntil = now + m * 60_000L
         Store.sessions { it.clear() } // nothing you opened before the break carries on through it
         Dnd.begin(ctx)
+        BreakQuietService.breakStarted()
         scheduleEnd(ctx, Store.focusUntil)
     }
 
@@ -64,6 +66,20 @@ class BreakReceiver : BroadcastReceiver() {
         if (!Store.breakActive()) {
             Dnd.end(context)
             Store.flash = "Break done. Welcome back."
+            // There's no timer on screen, so the phone says when it's over (after Do Not Disturb is off).
+            if (Reminder.canNotify(context)) try {
+                Reminder.createChannel(context)
+                val open = android.app.PendingIntent.getActivity(context, 8, Intent(context, com.poshith.intent.HomeActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), android.app.PendingIntent.FLAG_IMMUTABLE)
+                val n = android.app.Notification.Builder(context, Reminder.CHANNEL)
+                    .setSmallIcon(com.poshith.intent.R.drawable.ic_stat)
+                    .setContentTitle("Your break is over")
+                    .setContentText("Welcome back. Your notifications come back over the next few minutes.")
+                    .setContentIntent(open)
+                    .setAutoCancel(true)
+                    .build()
+                context.getSystemService(NotificationManager::class.java).notify(4202, n)
+            } catch (_: Exception) {}
         }
     }
 }

@@ -24,7 +24,7 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
 | **Sessions that end** | With Focus Guard on, Intent counts only the minutes the app is actually in front, and shows "time's up" when you reach your number. One "2 more minutes", then you stop. |
 | **The pause grows** | Every session after the second one today waits 2 s longer (max 20 s). You can turn this off. |
 | **Essentials never wait** | Phone, messages, OTPs, UPI, maps, camera, authenticator, the clock and keyboards are never paused. Wi-Fi, Bluetooth, hotspot and mobile data are untouched. |
-| **A real break** | The strictest mode: your home screen becomes a dark timer, only calls ring through (plus WhatsApp if you keep it), and with Do Not Disturb access every other notification stays silent until the break ends. 15 min to 1 h 30, or type your own. |
+| **A real break** | The strictest mode: your home screen goes dark with no timer to watch, only calls get through, and with Notification access and Do Not Disturb access every other notification is set aside until the break ends (then they all come back). 15 min to 1 h 30, or type your own. |
 | **Focus and basic phone** | Deep work (25/50/90 min) with your essentials, or *basic phone*: only your essentials, with no search at all, until you turn it off. Ending anything early means holding a button for 3 s. |
 | **Morning quiet** | Mindful apps rest for the first 15 minutes after your first unlock of the morning, so your first thoughts are your own. |
 | **Wind-down** | At night, mindful apps rest (optionally all non-essentials). |
@@ -66,7 +66,7 @@ Every way of opening an app (home screen, search, and with Focus Guard on, notif
 
 ```
 protected app (phone, settings, keyboard…)  → open
-real break                                  → paused until it ends (only calls, and WhatsApp if kept)
+real break                                  → paused until it ends (only calls)
 essential                                   → open
 focus / basic phone                         → paused until it ends
 session you already chose, still running    → open

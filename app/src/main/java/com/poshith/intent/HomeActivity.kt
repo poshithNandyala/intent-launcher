@@ -360,11 +360,11 @@ class HomeActivity : BaseActivity() {
             }.legible()
             page.addView(date, lp().apply { gravity = g })
         }
-        statsLine = text("", scale(13.5f), k.text3).apply {
+        statsLine = text("", scale(14f), k.text2).apply {
             gravity = g; setPadding(0, dp(10), 0, dp(4)); visibility = View.GONE
             setLineSpacing(0f, 1.25f)
             background = ripple(null, dp(8).toFloat())
-            setOnClickListener { it.tick(); if (breakScreen == null) mindPanel().open() }
+            setOnClickListener { it.tick(); if (breakScreen == null) todaySheet() }
         }.legible()
         page.addView(statsLine, lp())
 
@@ -600,8 +600,7 @@ class HomeActivity : BaseActivity() {
         oneThing.visibility = View.VISIBLE
         val t = Store.oneThing
         if (t.isBlank()) {
-            oneThing.text = "+ Today's one thing"
-            oneThing.setTextColor(ink().text3)
+            oneThing.visibility = View.GONE
         } else {
             oneThing.text = "Today · $t"
             oneThing.setTextColor(ink().text2)
@@ -638,60 +637,59 @@ class HomeActivity : BaseActivity() {
             ui.postDelayed({ renderStats() }, 4_000)
             return
         }
-        statsLine.setTextColor(ink().text3)
+        statsLine.setTextColor(ink().text2)
         if (!Store.showStats) { statsLine.visibility = View.GONE; return }
         com.poshith.intent.ui.Bg.run {
             val usage = Usage.today(this)
-            val mindful = Store.packagesWithMode(Mode.MINDFUL)
-            val notNow = Stats.notNowToday()
-            val videos = Stats.shortVideosToday()
             runOnUiThread {
                 if (isDestroyed || breakScreen != null) return@runOnUiThread
-                statsLine.text = screenTime(usage, mindful, notNow, videos)
+                statsLine.text = if (usage == null) "" else "${Usage.formatMinutes(usage.totalMs(packageName))} today"
                 statsLine.visibility = if (statsLine.text.isBlank()) View.GONE else View.VISIBLE
             }
         }
     }
 
-    /**
-     * Today's screen time, quietly. Time in the apps that pull you is the part that grows heavier:
-     * brighter past an hour, then warm amber with a plain comparison. Calls, maps and work time are
-     * never singled out.
-     */
-    private fun screenTime(usage: Usage.Today?, mindful: Set<String>, notNow: Int, videos: Int): CharSequence {
-        val k = ink()
-        val out = android.text.SpannableStringBuilder()
-        if (usage == null) {
-            if (notNow > 0) out.append("Not now ×$notNow today")
-        } else {
-            out.append("${Usage.formatMinutes(usage.totalMs(packageName))} on your phone today")
-            if (notNow > 0) out.append(" · not now ×$notNow")
-        }
-        // Swipes through Shorts and Reels: plain at first, brighter past 30, warm past 60.
-        if (videos > 0) {
-            val first = out.isEmpty()
-            if (!first) out.append(" · ")
-            val start = out.length
-            out.append("$videos short video${if (videos == 1) "" else "s"}${if (first) " today" else ""}")
-            val c = when { videos >= 60 -> k.warn; videos >= 30 -> k.text; else -> 0 }
-            if (c != 0) out.setSpan(android.text.style.ForegroundColorSpan(c), start, out.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
-        if (usage == null) return out
-        val pull = usage.msFor(mindful)
-        if (pull >= 30 * 60_000L) {
-            val line = StringBuilder("${Usage.formatMinutes(pull)} of it in pull apps")
-            val color = when {
-                pull >= 3 * 3_600_000L -> { line.append(". Most of an evening."); k.warn }
-                pull >= 2 * 3_600_000L -> { line.append(". As long as a film."); k.warn }
-                pull >= 3_600_000L -> k.text
-                else -> k.text2
+    /** Today in numbers, only when you ask (tap the screen time). The home screen stays quiet. */
+    private fun todaySheet() {
+        val s = Sheet(this, "Today", null)
+        val body = vbox()
+        s.add(body)
+        body.addView(text("…", 15f, P.text3), lp())
+        s.show()
+        com.poshith.intent.ui.Bg.run {
+            val usage = Usage.today(this)
+            val mindful = Store.packagesWithMode(Mode.MINDFUL)
+            val shorts = Stats.shortVideosToday(com.poshith.intent.core.Feed.SHORTS)
+            val reels = Stats.shortVideosToday(com.poshith.intent.core.Feed.REELS)
+            val notNow = Stats.notNowToday()
+            val top = usage?.foregroundMs?.filterKeys { it in mindful }?.entries?.sortedByDescending { it.value }
+                ?.filter { it.value >= 60_000 }?.take(4).orEmpty()
+            runOnUiThread {
+                if (isDestroyed) return@runOnUiThread
+                body.removeAllViews()
+                fun row(label: String, value: String, warn: Boolean = false) {
+                    val r = hbox(Gravity.CENTER_VERTICAL).apply { minimumHeight = dp(46) }
+                    r.addView(text(label, 16f, P.text2), lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+                    r.addView(text(value, 16f, if (warn) P.warn else P.text, Fonts.medium(this@HomeActivity)))
+                    body.addView(r, lp())
+                }
+                if (usage == null) {
+                    body.addView(paragraph("Allow usage access to see your screen time. It's counted on the phone and never leaves it.", 15f, P.text2), lp())
+                    body.addView(button("Allow usage access", Kind.QUIET) { s.dismiss(); Launch.usageSettings(this) }, lp())
+                } else {
+                    row("Screen time", Usage.formatMinutes(usage.totalMs(packageName)))
+                    if (usage.unlocksKnown) row("Unlocks", usage.unlocks.toString())
+                    val pull = usage.msFor(mindful)
+                    row("In pull apps", Usage.formatMinutes(pull), warn = pull >= 2 * 3_600_000L)
+                    for ((pkg, ms) in top) row("   " + Apps.labelFor(this, pkg), Usage.formatMinutes(ms))
+                }
+                if (shorts > 0) row("Shorts swiped", shorts.toString(), warn = shorts >= 50)
+                if (reels > 0) row("Reels swiped", reels.toString(), warn = reels >= 50)
+                if (notNow > 0) row("Said “Not now”", "$notNow×")
+                body.addView(space(8))
+                body.addView(button("Your week", Kind.PLAIN) { s.dismiss(); mindPanel().open() }, lp())
             }
-            val start = out.length + 1
-            out.append("\n").append(line)
-            out.setSpan(android.text.style.ForegroundColorSpan(color), start, out.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            if (pull >= 2 * 3_600_000L) out.setSpan(android.text.style.RelativeSizeSpan(1.12f), start, out.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         }
-        return out
     }
 
     // ---------------------------------------------------------------------------------- check-in
@@ -699,6 +697,7 @@ class HomeActivity : BaseActivity() {
     /** Right after you unlock: "What did you pick up your phone for?" Never blocks anything. */
     private fun maybeCheckIn() {
         if (!Store.checkIn || !Store.onboarded || hasBackLayers() || breakScreen != null) return
+        if (com.poshith.intent.guard.Calls.active(this)) return // never between you and a call
         val at = Store.lastUnlockElapsed
         if (at == 0L || at == shownCheckInFor) return
         if (SystemClock.elapsedRealtime() - at > 6_000) return
@@ -733,7 +732,7 @@ class HomeActivity : BaseActivity() {
                 if (autoLock !== this || shownCheckInFor != at) return
                 autoLock = null
                 hideCheckIn()
-                FocusGuardService.lockScreen()
+                if (!com.poshith.intent.guard.Calls.active(this@HomeActivity)) FocusGuardService.lockScreen()
             }
         }
         autoLock = r
@@ -778,7 +777,7 @@ class HomeActivity : BaseActivity() {
             // Say it, then do it: the phone locks on its own.
             checkIn.addView(text("Locking the phone…", scale(15f), k.text2).apply { gravity = g; setPadding(0, dp(6), 0, 0) }, lp())
             val at = shownCheckInFor
-            ui.postDelayed({ if (shownCheckInFor == at) { hideCheckIn(); FocusGuardService.lockScreen() } }, 1_300)
+            ui.postDelayed({ if (shownCheckInFor == at && resumed) { hideCheckIn(); FocusGuardService.lockScreen() } }, 1_300)
         } else {
             checkIn.addView(text("Put it down. Turn on Focus Guard and Intent locks it for you.", scale(15f), k.text2).apply {
                 gravity = g; setLineSpacing(0f, 1.2f); setPadding(0, dp(6), 0, dp(10))
@@ -917,6 +916,9 @@ class HomeActivity : BaseActivity() {
         private val input: EditText = field("Type an app name", caps = false)
         var isOpen = false
             private set
+        /** Choosing an app (Replace) instead of opening one. */
+        private var picking: ((AppEntry) -> Unit)? = null
+        private val defaultHint = "Type to find an app.\nTyping, not scrolling, keeps it on purpose."
         private val closer: () -> Unit = { close() }
         private val bars = BarLayer(P.dark, P.dark)
         private val barL: (com.poshith.intent.ui.Bars) -> Unit = { b ->
@@ -944,6 +946,15 @@ class HomeActivity : BaseActivity() {
 
         fun atTop() = true
 
+        /** Opens the search to choose an app: tapping a result hands it to [onPick] instead of opening it. */
+        fun pick(title: String, onPick: (AppEntry) -> Unit) {
+            if (isOpen) close(false)
+            picking = onPick
+            hint.text = "$title\nType the app's name."
+            hint.setTextColor(P.text2)
+            open()
+        }
+
         fun open() {
             if (isOpen) return
             isOpen = true
@@ -965,6 +976,9 @@ class HomeActivity : BaseActivity() {
         fun close(animate: Boolean = true) {
             if (!isOpen) return
             isOpen = false
+            picking = null
+            hint.text = defaultHint
+            hint.setTextColor(P.text3)
             dropBack(closer)
             removeBars(barL)
             dropBarLayer(bars)
@@ -980,7 +994,7 @@ class HomeActivity : BaseActivity() {
             if (q.isBlank()) { hint.visibility = View.VISIBLE; return }
             hint.visibility = View.GONE
             val found = Apps.search(q, Store.hidden, limit = 8)
-            val own = Apps.score("Intent settings", q) >= 0
+            val own = picking == null && Apps.score("Intent settings", q) >= 0
             if (found.isEmpty() && !own) {
                 results.addView(text("No app called “$q”.", 16f, P.text3).apply { setPadding(dp(30), dp(10), dp(30), dp(10)) }, lp())
                 return
@@ -990,7 +1004,7 @@ class HomeActivity : BaseActivity() {
             for (a in found) rows += resultRow(a)
             if (own) rows += plainRow("Intent settings", "settings") { close(false); startActivity(Intent(this@HomeActivity, SettingsActivity::class.java)) }
             for (r in rows.asReversed()) results.addView(r, lp())
-            if (Store.autoOpenSingle && found.size == 1 && !own && q.trim().length >= 2) (rows[0].tag as? (() -> Unit))?.invoke()
+            if (picking == null && Store.autoOpenSingle && found.size == 1 && !own && q.trim().length >= 2) (rows[0].tag as? (() -> Unit))?.invoke()
         }
 
         private fun resultRow(a: AppEntry): View {
@@ -1003,9 +1017,14 @@ class HomeActivity : BaseActivity() {
                 a.isWork -> "work"
                 else -> null
             }
-            val action: () -> Unit = { close(false); Launch.open(this@HomeActivity, a, null) }
+            val pick = picking
+            val action: () -> Unit = if (pick != null) {
+                { close(false); pick(a); Launch.toast(this@HomeActivity, "${a.label} is on your home screen") }
+            } else {
+                { close(false); Launch.open(this@HomeActivity, a, null) }
+            }
             val row = plainRow(a.label, tag, action)
-            row.setOnLongClickListener { v -> v.thud(); appMenu(a); true }
+            if (pick == null) row.setOnLongClickListener { v -> v.thud(); appMenu(a); true }
             return row
         }
 
@@ -1038,6 +1057,19 @@ class HomeActivity : BaseActivity() {
         val quick = Flow(this)
         val home = Store.homeKeys
         val onHome = app.key in home
+        if (onHome) quick.addView(Chip(this, "Replace").apply {
+            setOnClickListener {
+                it.tick(); s.dismiss()
+                library().pick("Replace ${app.label} with…") { chosen ->
+                    val now = Store.homeKeys
+                    Store.homeKeys = when {
+                        chosen.key == app.key -> now
+                        chosen.key in now -> now.map { k -> if (k == app.key) chosen.key else if (k == chosen.key) app.key else k } // swap places
+                        else -> now.map { k -> if (k == app.key) chosen.key else k }
+                    }
+                }
+            }
+        })
         quick.addView(Chip(this, if (onHome) "Remove from home" else "Add to home").apply {
             setOnClickListener {
                 it.tick(); s.dismiss()
@@ -1160,7 +1192,7 @@ class HomeActivity : BaseActivity() {
         if (Store.focusActive(now)) {
             val until = DateFormat.getTimeFormat(this).format(Date(Store.focusUntil))
             val brk = Store.focusIsBreak
-            val s = Sheet(this, if (brk) "On a break" else "Focusing", if (brk) "Until $until. Away from screens is the whole point." else "Until $until. Only your essentials open. Calls always ring.")
+            val s = Sheet(this, if (brk) "On a break" else "Focusing", if (brk) "Away from screens is the whole point." else "Until $until. Only your essentials open. Calls always ring.")
             s.add(HoldButton(this, if (brk) "Hold to end the break" else "Hold to end focus early", 3000) {
                 if (brk) { s.dismiss(); breakOver() } else { Store.focusUntil = 0; s.dismiss(); renderStatus() }
             })
@@ -1189,7 +1221,7 @@ class HomeActivity : BaseActivity() {
     }
 
     private fun breakTab(s: Sheet) {
-        s.add(paragraph("Only calls ring through. Every other app waits, notifications too, and your screen shows just a timer. Away from screens is the point.", 15f, P.text2), 0)
+        s.add(paragraph("Only calls get through. Every other app and every notification waits, and there's no timer to watch: the phone tells you when it's over.", 15f, P.text2), 0)
         var breakMin = Store.breakLength
         val presets = intArrayOf(15, 30, 45, 60, 90)
         val bf = Flow(this)
@@ -1215,11 +1247,17 @@ class HomeActivity : BaseActivity() {
         bChips += cc; bf.addView(cc)
         s.add(bf)
         s.add(custom)
-        if (Catalog.WHATSAPP.any { Apps.isInstalled(it) }) {
-            s.content.addView(toggleRow("Keep WhatsApp", "Open it during the break. Its calls ring either way.", Store.breakKeepWhatsapp) { Store.breakKeepWhatsapp = it }, lp())
+        // What makes it strict. Each missing piece is one tap away; the break works without them, just less strictly.
+        if (!Launch.isGuardOn(this)) {
+            s.item("Keep apps closed", "Turn on Focus Guard. Without it, apps can still be opened from notifications or recents.", P.accent, keepOpen = true) { guardSheet(this) }
+        }
+        if (!com.poshith.intent.guard.BreakQuietService.hasAccess(this)) {
+            s.item("Hide every notification but calls", "Allow Intent “Notification access”. They come back after the break, nothing is lost.", P.accent, keepOpen = true) {
+                com.poshith.intent.guard.BreakQuietService.requestAccess(this)
+            }
         }
         if (!Dnd.hasAccess(this)) {
-            s.item("Silence notifications too", "Allow Intent “Do Not Disturb access”. Calls and alarms still ring.", P.accent, keepOpen = true) { Dnd.requestAccess(this) }
+            s.item("Silence everything but calls", "Allow Intent “Do Not Disturb access”. Calls and alarms still ring.", P.accent, keepOpen = true) { Dnd.requestAccess(this) }
         }
         s.add(button("Start the break", Kind.PRIMARY) {
             hideKeyboard(this, custom)

@@ -43,6 +43,7 @@ class FocusGuardService : AccessibilityService() {
 
         fun lockScreen(): Boolean {
             val s = instance ?: return false
+            if (Calls.active(s)) return false // never lock the screen on a call
             return Build.VERSION.SDK_INT >= 28 && s.performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
         }
 
@@ -148,6 +149,9 @@ class FocusGuardService : AccessibilityService() {
             }
         } else {
             if (pkg in ignored) return
+            // A call screen (WhatsApp, Telegram, Meet...: an incoming or ongoing call) always shows,
+            // in every mode and every break. Intent never stands between you and a call.
+            if (isCallScreen(cls) || Calls.active(this)) return
             pkg
         }
         if (next == current) {
@@ -163,6 +167,11 @@ class FocusGuardService : AccessibilityService() {
     }
 
     private fun isApp(s: String) = !s.startsWith("#")
+
+    private fun isCallScreen(cls: String): Boolean {
+        val c = cls.substringAfterLast('.').lowercase()
+        return "voip" in c || "incall" in c || "incomingcall" in c || ("call" in c && "activity" in c && "log" !in c && "history" !in c)
+    }
 
     private fun moveTo(next: String) {
         if (next == current) return
@@ -195,6 +204,8 @@ class FocusGuardService : AccessibilityService() {
     }
 
     private fun showGate(pkg: String) {
+        // A call ringing or going on: nothing goes over it. The app is checked again once you're back.
+        if (Calls.active(this)) return
         val now = SystemClock.elapsedRealtime()
         // Skip only if this exact pause was started a moment ago. An app that comes back in front after
         // that (a splash screen opening the real app) gets the pause again, at most 5 times in 10 s.
@@ -221,6 +232,8 @@ class FocusGuardService : AccessibilityService() {
     private fun onExpire() {
         val pkg = timing ?: return
         if (current != pkg) return
+        // On a call in that app (WhatsApp, Meet...): time's up waits until the call is over.
+        if (Calls.active(this)) { h.removeCallbacks(expireRunnable); h.postDelayed(expireRunnable, 15_000); return }
         val now = SystemClock.elapsedRealtime()
         val rem = Store.sessions { it.remainingMs(pkg, now) }
         if (rem > 1_000) { scheduleExpiry(pkg); return }

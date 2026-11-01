@@ -65,6 +65,11 @@ class ReelsGuardService : AccessibilityService() {
     private val h = Handler(Looper.getMainLooper())
     private var askedAt = 0L
     private val lastIndex = HashMap<Feed, Int>()
+    /** The Short in front right now (its page view), so a different one in front means you swiped. */
+    private var lastPage: AccessibilityNodeInfo? = null
+    private var inFeed: Feed? = null
+    private var lookPending = false
+    private var lookPkg = ""
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -74,9 +79,22 @@ class ReelsGuardService : AccessibilityService() {
     }
 
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
-        if (e == null || e.eventType != AccessibilityEvent.TYPE_VIEW_SCROLLED || !Store.reelsOn) return
+        if (e == null || !Store.reelsOn) return
         val pkg = e.packageName?.toString() ?: return
         val feed = Feed.of(pkg) ?: return
+        when (e.eventType) {
+            AccessibilityEvent.TYPE_VIEW_SCROLLED -> onScroll(e, feed, pkg)
+            // The screen changed: look (at most every 300 ms) for the full-screen player, and whether
+            // the Short in front is a new one. Current YouTube needs this: its Shorts pager has no
+            // telling name, so the scroll alone doesn't say it was Shorts.
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                lookPkg = pkg
+                if (!lookPending) { lookPending = true; h.postDelayed({ lookPending = false; look(lookPkg) }, 300) }
+            }
+        }
+    }
+
+    private fun onScroll(e: AccessibilityEvent, feed: Feed, pkg: String) {
         // Opening a Short or closing a sheet sends scroll events that don't move: not a swipe.
         if (Build.VERSION.SDK_INT >= 28 && e.scrollDeltaY == 0) return
         val src = e.source ?: return
@@ -84,14 +102,76 @@ class ReelsGuardService : AccessibilityService() {
         val r = Rect()
         src.getBoundsInScreen(r)
         if (r.height() < resources.displayMetrics.heightPixels / 2) return
-        if (!FeedIds.isFeedSwipe(feed, idPath(src))) return
+        val path = idPath(src)
+        val named = FeedIds.isFeedSwipe(feed, path)
+        // Not a pager Intent knows by name: still a swipe if it's a full-screen scroll while the
+        // feed's player is in front, and not inside comments.
+        if (!named && (FeedIds.inSheet(feed, path) || playerScreen(feed, pkg) == null)) return
         // Android 8 doesn't say how far a view moved; there, a swipe is the pager's first visible item changing.
         if (Build.VERSION.SDK_INT < 28 && e.fromIndex >= 0) {
             val last = lastIndex[feed]
             lastIndex[feed] = e.fromIndex
             if (last == null || last == e.fromIndex) return
         }
+        swiped(feed, pkg)
+    }
 
+    /** What's in front of [pkg] now: in the feed or not, and has the Short changed since last time? */
+    private fun look(pkg: String) {
+        val feed = Feed.of(pkg) ?: return
+        val screen = playerScreen(feed, pkg)
+        if (screen == null) {
+            // Left the feed (or the app): the next time you come in starts clean.
+            inFeed = null; lastPage = null
+            return
+        }
+        val entering = inFeed != feed
+        inFeed = feed
+        // "Off" means off: stepping into the feed at all gets the pause, not just the swipe.
+        if (entering && Store.reelsAllow == 0) {
+            lastPage = screen.page
+            ask(feed, pkg, Sitting.Ask.START, count = false)
+            return
+        }
+        val page = screen.page ?: return
+        val before = lastPage
+        lastPage = page
+        if (before != null && page != before) swiped(feed, pkg)
+    }
+
+    private class PlayerScreen(val page: AccessibilityNodeInfo?)
+
+    /** The feed's full-screen player, if it's in front: the Short's own page view when there is one. */
+    private fun playerScreen(feed: Feed, pkg: String): PlayerScreen? {
+        val root = rootFor(pkg) ?: return null
+        val tall = resources.displayMetrics.heightPixels * 3 / 5
+        val r = Rect()
+        fun biggest(ids: List<String>): AccessibilityNodeInfo? {
+            var best: AccessibilityNodeInfo? = null
+            var bestArea = 0
+            for (id in ids) {
+                val found = try { root.findAccessibilityNodeInfosByViewId("$pkg:id/$id") } catch (_: Exception) { null } ?: continue
+                for (n in found) {
+                    if (!n.isVisibleToUser) continue
+                    n.getBoundsInScreen(r)
+                    if (r.height() < tall) continue
+                    val area = r.width() * r.height()
+                    if (area > bestArea) { best = n; bestArea = area }
+                }
+            }
+            return best
+        }
+        val page = biggest(FeedIds.PLAYER_PAGES.getValue(feed))
+        if (page != null) return PlayerScreen(page)
+        return if (biggest(FeedIds.PLAYER_SCREENS.getValue(feed)) != null) PlayerScreen(null) else null
+    }
+
+    private fun rootFor(pkg: String): AccessibilityNodeInfo? {
+        try { rootInActiveWindow?.let { if (it.packageName?.toString() == pkg) return it } } catch (_: Exception) {}
+        return try { windows.firstNotNullOfOrNull { w -> w.root?.takeIf { it.packageName?.toString() == pkg } } } catch (_: Exception) { null }
+    }
+
+    private fun swiped(feed: Feed, pkg: String) {
         val now = SystemClock.elapsedRealtime()
         val ask = synchronized(sittings) {
             val s = sitting(feed)
@@ -99,13 +179,19 @@ class ReelsGuardService : AccessibilityService() {
             s.ask()
         }
         Stats.shortVideo(feed)
-        if (ask != Sitting.Ask.NONE && now - askedAt > 1_500) {
-            askedAt = now
-            try {
-                startActivity(ReelsActivity.intent(this, feed, pkg, ask)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))
-            } catch (_: Exception) {}
-        }
+        if (ask != Sitting.Ask.NONE) ask(feed, pkg, ask, count = true)
+    }
+
+    private fun ask(feed: Feed, pkg: String, ask: Sitting.Ask, @Suppress("UNUSED_PARAMETER") count: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - askedAt <= 1_500 || com.poshith.intent.guard.Calls.active(this)) return
+        askedAt = now
+        // Whatever is in front when you come back is the new starting point, not a swipe.
+        lastPage = null
+        try {
+            startActivity(ReelsActivity.intent(this, feed, pkg, ask)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))
+        } catch (_: Exception) {}
     }
 
     /** The view's resource name, then its parents', up to a few levels (names only, never text). */
@@ -136,6 +222,7 @@ class ReelsGuardService : AccessibilityService() {
     private fun shutdown() {
         running = false
         instance = null
+        lastPage = null; inFeed = null; lookPending = false
         h.removeCallbacksAndMessages(null)
     }
 }

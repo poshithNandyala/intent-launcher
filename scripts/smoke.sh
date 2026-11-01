@@ -127,7 +127,13 @@ record default-home
 
 # The long-press menu: everything visible, no keyboard
 read -r mx my < <(python3 scripts/ui.py coords "Messages" | head -1)
-if [ "$mx" -gt 0 ]; then adb shell input swipe "$mx" "$my" "$mx" "$my" 900; record app-menu; adb shell input keyevent KEYCODE_BACK; fi
+if [ "$mx" -gt 0 ]; then
+    adb shell input swipe "$mx" "$my" "$mx" "$my" 900; record app-menu
+    # Replace: the search opens as a picker, and the chosen app takes Messages' place on home
+    tap "Replace";        record replace-picker
+    type_text "Clock"; sleep 1
+    tap "Clock";          record replaced    # expected: Clock where Messages was
+fi
 
 if adb shell pm list packages | grep -q "package:com.google.android.youtube"; then
     # Is a 2-minute session really over after 2 minutes? Choose 2 min on the pause, then wait.
@@ -163,7 +169,7 @@ snap just-checking-locks
   adb shell dumpsys power | grep -m1 -E "mWakefulness="; } > "$OUT/lock-state.txt" 2>&1
 adb shell input keyevent KEYCODE_WAKEUP; sleep 1; adb shell wm dismiss-keyguard; sleep 2
 
-# A real break: just a timer, only calls
+# A real break: no timer, only calls
 adb shell input keyevent KEYCODE_HOME
 tap "Focus"; sleep 1
 record quiet-sheet
@@ -176,11 +182,13 @@ snap break-blocks-youtube
 adb shell input keyevent KEYCODE_BACK
 sleep 2
 read -r hx hy < <(python3 scripts/ui.py coords "Hold to end the break" | head -1)
-[ "$hx" -gt 0 ] && adb shell input swipe "$hx" "$hy" "$hx" "$hy" 3800
+[ "$hx" -gt 0 ] && adb shell input swipe "$hx" "$hy" "$hx" "$hy" 6800
 record break-ended
 
 # Shorts and Reels: the Short you open plays; the first swipe to another one gets the pause, and
 # after "Watch 10 more", the 11th swipe gets it again. Both guards on, as most people would have them.
+# The stand-in is shaped like current YouTube: the scroller has no telling name, only the per-Short
+# page views (reel_player_page_container) say it's Shorts.
 flick() { adb shell input swipe "$((W / 2))" "$((H * 70 / 100))" "$((W / 2))" "$((H * 40 / 100))" 300; }
 if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; then
     adb shell settings put secure enabled_accessibility_services $PKG/$PKG.guard.FocusGuardService:$PKG/$PKG.guard.ReelsGuardService

@@ -4,17 +4,21 @@ import android.app.Activity;
 import android.graphics.Color;
 import android.os.Bundle;
 import android.view.Gravity;
+import android.widget.FrameLayout;
 import android.widget.LinearLayout;
 import android.widget.ScrollView;
 import android.widget.TextView;
 
-/** Test fixture (see AndroidManifest.xml): screen-high "videos" in a scroller named reel_recycler. */
+/**
+ * Test fixture (see AndroidManifest.xml), shaped like current YouTube Shorts: screen-high "videos",
+ * each in its own reel_player_page_container, inside a scroller whose name says nothing about Shorts.
+ */
 public class Feed extends Activity {
     @Override
     protected void onCreate(Bundle state) {
         super.onCreate(state);
         ScrollView scroller = new ScrollView(this);
-        scroller.setId(R.id.reel_recycler);
+        scroller.setId(R.id.watch_while_layout);
         LinearLayout column = new LinearLayout(this);
         column.setOrientation(LinearLayout.VERTICAL);
         int h = getResources().getDisplayMetrics().heightPixels;
@@ -26,7 +30,10 @@ public class Feed extends Activity {
             t.setTextColor(Color.WHITE);
             t.setGravity(Gravity.CENTER);
             t.setBackgroundColor(colors[i % colors.length]);
-            column.addView(t, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, h));
+            FrameLayout page = new FrameLayout(this);
+            page.setId(R.id.reel_player_page_container);
+            page.addView(t, new FrameLayout.LayoutParams(FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
+            column.addView(page, new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, h));
         }
         scroller.addView(column);
         setContentView(scroller);

@@ -32,6 +32,7 @@ Your answer to "How are you feeling?" is never saved. It only changes the sugges
 | Accessibility (Shorts & Reels guard, optional) | To notice when you start swiping through YouTube Shorts or Instagram Reels, count those swipes and show the pause. Told only about scrolling in those two apps. |
 | Usage access (optional) | Unlock count and minutes in mindful apps on the home screen and in Your week. |
 | Notifications (optional) | A "your minutes are up" reminder when Focus Guard is off. Intent sends nothing else. |
+| Notification access (optional) | During a real break only: sets every notification that isn't a call (or an alarm) aside, and they come back by themselves after the break. Intent doesn't keep, copy or send them, and outside a break it does nothing. |
 | Do Not Disturb access (optional) | During a real break, silence everything except calls and alarms, then put Do Not Disturb back exactly as it was. It can't read your notifications. |
 | Expand status bar | Swipe down on the home screen to open notifications. |
 | Request uninstall | "Uninstall" in an app's long-press menu. Android always asks you to confirm. |

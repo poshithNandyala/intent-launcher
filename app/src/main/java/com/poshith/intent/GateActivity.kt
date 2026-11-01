@@ -45,8 +45,9 @@ import com.poshith.intent.ui.vbox
 import java.util.Date
 
 /**
- * The pause. Shown before a mindful app opens: one slow breath, "How are you feeling?",
- * "What's it for?", how many minutes, and an exit that is always the biggest button.
+ * The pause. Shown before a mindful app opens: one slow breath, then how many minutes, and an exit
+ * that is always the biggest button. "What's it for?" comes only when it matters (the 4th open today,
+ * or straight back after a session), and "How are you feeling?" only if you turned it on.
  * The design follows the one sec study (Grüning et al., PNAS 2023): a short delay plus an easy way
  * out is what cut openings, more than any message.
  */
@@ -75,6 +76,7 @@ class GateActivity : BaseActivity() {
 
     private var minutes = Rule.DEFAULT_SESSION_MIN
     private var purpose: Purpose? = null
+    private var askWhy = false
     private var scroll: android.widget.ScrollView? = null
     private var feeling: Feeling? = null
     private var pauseDone = false
@@ -100,7 +102,7 @@ class GateActivity : BaseActivity() {
         key = i.getStringExtra(EXTRA_KEY)
         fromLauncher = i.getBooleanExtra(EXTRA_LAUNCHER, true)
         label = Apps.labelFor(this, pkg)
-        purpose = null; feeling = null; pauseDone = false; leaving = false
+        purpose = null; feeling = null; pauseDone = false; leaving = false; askWhy = false
         minutes = Store.rule(pkg).sessionMin
     }
 
@@ -199,22 +201,24 @@ class GateActivity : BaseActivity() {
             col.addView(nudgeAction, lp())
         }
 
-        // After the breath: what it's for and for how long. Hidden until then, so the first thing
-        // you see is one calm circle, not a form.
+        // After the breath: just how long. "What's it for?" only when it matters: the 4th time today
+        // or more, or straight back after a session ended. Every other time it's one tap to open.
+        askWhy = d.opensToday >= 3 || Store.endedRecently(pkg)
         val after = vbox(Gravity.CENTER_HORIZONTAL).apply { visibility = View.GONE }
         col.addView(after, lp())
-        question(after, "What's it for?")
-        val pFlow = Flow(this, centered = true)
-        val pChips = ArrayList<Chip>()
-        for (p in Purpose.values()) {
-            val c = Chip(this, p.label)
-            c.setOnClickListener { purpose = p; pChips.forEach { x -> x.on = x === c }; refreshOpen() }
-            pChips += c; pFlow.addView(c)
+        if (askWhy) {
+            question(after, if (d.opensToday >= 3) "${ordinal(d.opensToday + 1)} time today. What's it for?" else "You just closed it. What's it for?")
+            val pFlow = Flow(this, centered = true)
+            val pChips = ArrayList<Chip>()
+            for (p in Purpose.values()) {
+                val c = Chip(this, p.label)
+                c.setOnClickListener { purpose = p; pChips.forEach { x -> x.on = x === c }; refreshOpen() }
+                pChips += c; pFlow.addView(c)
+            }
+            after.addView(pFlow, lp())
         }
-        after.addView(pFlow, lp())
 
-        // For how long?
-        question(after, "For how long?")
+        // For how long? Chosen right on the chips, no extra question.
         val mFlow = Flow(this, centered = true)
         val mChips = ArrayList<Chip>()
         val choices = Rule.SESSION_CHOICES.filter { it <= 15 }.toMutableList()
@@ -225,21 +229,10 @@ class GateActivity : BaseActivity() {
             c.setOnClickListener { minutes = m; mChips.forEach { x -> x.on = x === c }; refreshOpen() }
             mChips += c; mFlow.addView(c)
         }
-        after.addView(mFlow, lp())
+        after.addView(mFlow, lp().apply { topMargin = dp(if (askWhy) 18 else 26) })
 
         val plan = Store.urgePlan
-        if (plan.isNotBlank()) line(after, "Your plan: when I feel the pull, I'll $plan.", P.text3, 14f, 24)
-        else if (Store.oneThing.isNotBlank()) line(after, "Your one thing today: ${Store.oneThing}", P.text3, 14f, 24)
-        else {
-            val q = com.poshith.intent.core.Quotes.forMoment(System.currentTimeMillis(), 60_000L)
-            after.addView(text("“${q.text}”", 15f, P.text2, Fonts.light(this)).apply {
-                gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f); setPadding(dp(8), dp(28), dp(8), 0)
-                breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
-            }, lp())
-            if (q.by.isNotBlank()) after.addView(text(q.by.uppercase(), 11f, P.text3, Fonts.medium(this)).apply {
-                gravity = Gravity.CENTER; letterSpacing = 0.08f; setPadding(0, dp(8), 0, 0)
-            }, lp())
-        }
+        if (plan.isNotBlank()) line(after, "Your plan: when I feel the pull, I'll $plan.", P.text3, 14f, 22)
 
         bar.addView(button("Not now", Kind.PRIMARY) { notNow() }, lp())
         val open = button("", Kind.OUTLINE) { proceed(minutes, purpose?.label ?: "") }.apply { visibility = View.GONE }
@@ -286,10 +279,10 @@ class GateActivity : BaseActivity() {
 
     private fun refreshOpen() {
         val b = openBtn ?: return
-        val ready = pauseDone && purpose != null
+        val ready = pauseDone && (!askWhy || purpose != null)
         b.text = when {
             !pauseDone -> "Take a breath first"
-            purpose == null -> "Choose what it's for"
+            askWhy && purpose == null -> "Choose what it's for"
             else -> "Open for $minutes min"
         }
         styleButton(b, Kind.OUTLINE, enabled = ready)
@@ -317,8 +310,8 @@ class GateActivity : BaseActivity() {
             }
             BlockReason.BREAK -> {
                 title(col, "REAL BREAK", "Not now")
-                line(col, "You're on a break until $until. Only calls get through: everything else waits for you.", P.text2, 16f, 14)
-                actions(col, "Back to my break", HoldButton(this, "Hold to end the break", 3000) { com.poshith.intent.guard.Break.end(this); build() })
+                line(col, "You're on a break. Only calls get through: everything else waits for you.", P.text2, 16f, 14)
+                actions(col, "Back to my break", HoldButton(this, "Hold to end the break", 6000) { com.poshith.intent.guard.Break.end(this); build() })
             }
             BlockReason.BASIC -> {
                 title(col, "BASIC PHONE", "$label is off")

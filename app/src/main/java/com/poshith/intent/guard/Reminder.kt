@@ -24,7 +24,7 @@ import com.poshith.intent.data.Store
  * screen appears instead and this is never used.)
  */
 object Reminder {
-    private const val CHANNEL = "sessions"
+    const val CHANNEL = "sessions"
     private const val EXTRA_PKG = "pkg"
     private const val EXTRA_MIN = "min"
     private val main = Handler(Looper.getMainLooper())

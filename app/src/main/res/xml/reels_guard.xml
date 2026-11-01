@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Scroll events from YouTube and Instagram only. It reads the names (resource IDs) of the view that
-     scrolled and the views around it, to tell a swipe through Shorts or Reels from anything else.
+<!-- Scroll and screen-change events from YouTube and Instagram only. It reads the names (resource IDs)
+     of views, like "reel_player_page_container", to tell the full-screen Shorts or Reels player from
+     anything else and to see when a new one comes in front.
      It never reads text. flagRetrieveInteractiveWindows: older Android versions otherwise only let it
      look at the "active" window, which can lag a moment behind the app you're swiping in. -->
 <accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
-    android:accessibilityEventTypes="typeViewScrolled"
+    android:accessibilityEventTypes="typeViewScrolled|typeWindowContentChanged|typeWindowStateChanged"
     android:accessibilityFeedbackType="feedbackGeneric"
     android:accessibilityFlags="flagReportViewIds|flagRetrieveInteractiveWindows"
     android:canRetrieveWindowContent="true"
