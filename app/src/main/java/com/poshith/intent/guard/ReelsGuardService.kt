@@ -59,6 +59,9 @@ class ReelsGuardService : AccessibilityService() {
     private val lastIndex = HashMap<Feed, Int>()
     /** The Short in front right now (its page view), so a different one in front means you swiped. */
     private var lastPage: AccessibilityNodeInfo? = null
+    /** The one before it, and when the front one last changed: going straight back isn't a new video. */
+    private var twoBack: AccessibilityNodeInfo? = null
+    private var changedAt = 0L
     private var inFeed: Feed? = null
     private var lookPending = false
     private var lookPkg = ""
@@ -117,7 +120,7 @@ class ReelsGuardService : AccessibilityService() {
         val screen = playerScreen(feed, pkg)
         if (screen == null) {
             // Left the feed (or the app): the next time you come in starts clean.
-            inFeed = null; lastPage = null
+            inFeed = null; lastPage = null; twoBack = null
             return
         }
         val entering = inFeed != feed
@@ -131,7 +134,14 @@ class ReelsGuardService : AccessibilityService() {
         val page = screen.page ?: return
         val before = lastPage
         lastPage = page
-        if (before != null && page != before) { log("new ${feed.one} in front"); swiped(feed, pkg, newVideo = true) }
+        if (before != null && page != before) {
+            // Straight back to the one from a moment ago: a swipe you didn't finish (or a step back), not a new video.
+            val now = SystemClock.elapsedRealtime()
+            val back = page == twoBack && now - changedAt < 1_500
+            twoBack = before; changedAt = now
+            if (back) { log("back to the same ${feed.one}"); return }
+            log("new ${feed.one} in front"); swiped(feed, pkg, newVideo = true)
+        }
     }
 
     /** Debug builds and the emulator test read these; view names and counts only, never what's on screen. */
@@ -188,7 +198,7 @@ class ReelsGuardService : AccessibilityService() {
         if (now - askedAt <= 1_500 || com.poshith.intent.guard.Calls.active(this)) return
         askedAt = now
         // Whatever is in front when you come back is the new starting point, not a swipe.
-        lastPage = null
+        lastPage = null; twoBack = null
         // The app goes first (home in front without "user leaving", so no picture-in-picture, and its
         // sound stops), then the pause appears over the home screen.
         Closer.toHome(this)
@@ -226,7 +236,7 @@ class ReelsGuardService : AccessibilityService() {
     private fun shutdown() {
         running = false
         instance = null
-        lastPage = null; inFeed = null; lookPending = false
+        lastPage = null; twoBack = null; inFeed = null; lookPending = false
         h.removeCallbacksAndMessages(null)
     }
 }
