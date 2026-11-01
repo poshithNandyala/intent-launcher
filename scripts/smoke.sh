@@ -103,7 +103,10 @@ if adb shell pm list packages | grep -q "package:com.google.android.youtube"; th
     swipe 50 80 50 25
     type_text "YouTube"; sleep 1
     tap "YouTube";        record pause
-    sleep 6;              record pause-after-breath
+    # Fresh install = first unlock of the day: morning quiet holds mindful apps. Skip it to see the pause.
+    read -r qx qy < <(python3 scripts/ui.py coords "Hold to skip this morning" | head -1)
+    if [ "$qx" -gt 0 ]; then adb shell input swipe "$qx" "$qy" "$qx" "$qy" 3800; record pause-real; fi
+    sleep 7;              record pause-after-breath   # expected: minute chips + "Open for 5 min", no questions
     tap "Not now";        record after-not-now
 
     # Focus Guard: the same app opened from outside Intent (like a notification) still gets the pause

@@ -97,7 +97,7 @@ class ReelsGuardService : AccessibilityService() {
     private fun onScroll(e: AccessibilityEvent, feed: Feed, pkg: String) {
         // Opening a Short or closing a sheet sends scroll events that don't move: not a swipe.
         if (Build.VERSION.SDK_INT >= 28 && e.scrollDeltaY == 0) return
-        val src = e.source ?: return
+        val src = e.source ?: run { log("scroll without a source"); return }
         // The full-screen player, not a shelf of thumbnails or a row in a list.
         val r = Rect()
         src.getBoundsInScreen(r)
@@ -106,7 +106,10 @@ class ReelsGuardService : AccessibilityService() {
         val named = FeedIds.isFeedSwipe(feed, path)
         // Not a pager Intent knows by name: still a swipe if it's a full-screen scroll while the
         // feed's player is in front, and not inside comments.
-        if (!named && (FeedIds.inSheet(feed, path) || playerScreen(feed, pkg) == null)) return
+        if (!named && (FeedIds.inSheet(feed, path) || playerScreen(feed, pkg) == null)) {
+            log("scroll not counted: ${path.filter { it.isNotEmpty() }.take(4)}")
+            return
+        }
         // Android 8 doesn't say how far a view moved; there, a swipe is the pager's first visible item changing.
         if (Build.VERSION.SDK_INT < 28 && e.fromIndex >= 0) {
             val last = lastIndex[feed]
@@ -136,8 +139,11 @@ class ReelsGuardService : AccessibilityService() {
         val page = screen.page ?: return
         val before = lastPage
         lastPage = page
-        if (before != null && page != before) swiped(feed, pkg)
+        if (before != null && page != before) { log("new ${feed.one} in front"); swiped(feed, pkg) }
     }
+
+    /** Debug builds and the emulator test read these; view names and counts only, never what's on screen. */
+    private fun log(msg: String) { android.util.Log.d("IntentReels", msg) }
 
     private class PlayerScreen(val page: AccessibilityNodeInfo?)
 
@@ -146,7 +152,7 @@ class ReelsGuardService : AccessibilityService() {
         val root = rootFor(pkg) ?: return null
         val tall = resources.displayMetrics.heightPixels * 3 / 5
         val r = Rect()
-        fun biggest(ids: List<String>): AccessibilityNodeInfo? {
+        fun biggest(ids: List<String>, minHeight: Int = tall): AccessibilityNodeInfo? {
             var best: AccessibilityNodeInfo? = null
             var bestArea = 0
             for (id in ids) {
@@ -154,14 +160,15 @@ class ReelsGuardService : AccessibilityService() {
                 for (n in found) {
                     if (!n.isVisibleToUser) continue
                     n.getBoundsInScreen(r)
-                    if (r.height() < tall) continue
+                    if (r.height() < minHeight) continue
                     val area = r.width() * r.height()
                     if (area > bestArea) { best = n; bestArea = area }
                 }
             }
             return best
         }
-        val page = biggest(FeedIds.PLAYER_PAGES.getValue(feed))
+        val page = biggest(FeedIds.PLAYER_PAGES.getValue(feed), tall)
+            ?: biggest(FeedIds.PLAYER_PAGES.getValue(feed), resources.displayMetrics.heightPixels / 3)?.let { return PlayerScreen(null) } // mid-swipe
         if (page != null) return PlayerScreen(page)
         return if (biggest(FeedIds.PLAYER_SCREENS.getValue(feed)) != null) PlayerScreen(null) else null
     }
@@ -179,6 +186,7 @@ class ReelsGuardService : AccessibilityService() {
             s.ask()
         }
         Stats.shortVideo(feed)
+        log("swipe counted, ask=$ask")
         if (ask != Sitting.Ask.NONE) ask(feed, pkg, ask, count = true)
     }
 

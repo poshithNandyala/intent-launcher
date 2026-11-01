@@ -1247,7 +1247,14 @@ class HomeActivity : BaseActivity() {
         bChips += cc; bf.addView(cc)
         s.add(bf)
         s.add(custom)
-        // What makes it strict. Each missing piece is one tap away; the break works without them, just less strictly.
+        s.add(button("Start the break", Kind.PRIMARY) {
+            hideKeyboard(this, custom)
+            Break.start(this, breakMin)
+            s.dismiss()
+            buildHome()
+            if (resumed) breakScreen?.start()
+        })
+        // Below the button: what makes it stricter. Each missing piece is one tap away; the break works without them, just less strictly.
         if (!Launch.isGuardOn(this)) {
             s.item("Keep apps closed", "Turn on Focus Guard. Without it, apps can still be opened from notifications or recents.", P.accent, keepOpen = true) { guardSheet(this) }
         }
@@ -1259,13 +1266,6 @@ class HomeActivity : BaseActivity() {
         if (!Dnd.hasAccess(this)) {
             s.item("Silence everything but calls", "Allow Intent “Do Not Disturb access”. Calls and alarms still ring.", P.accent, keepOpen = true) { Dnd.requestAccess(this) }
         }
-        s.add(button("Start the break", Kind.PRIMARY) {
-            hideKeyboard(this, custom)
-            Break.start(this, breakMin)
-            s.dismiss()
-            buildHome()
-            if (resumed) breakScreen?.start()
-        })
     }
 
     private fun focusTab(s: Sheet) {
