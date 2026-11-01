@@ -61,14 +61,16 @@ class FocusGuardService : AccessibilityService() {
         @Volatile private var pendingExpect: String? = null
         @Volatile private var pendingExpectAt = 0L
 
-        private val notNowAt = HashMap<String, Long>()
+        private val sentHomeAt = HashMap<String, Long>()
 
-        /** "Not now" means not now: if the app pops back up within a few seconds (apps that open through
-         *  a splash screen relaunch themselves), it's sent home again without asking twice. */
-        fun saidNotNow(pkg: String) { synchronized(notNowAt) { notNowAt[pkg] = SystemClock.elapsedRealtime() } }
-        private fun justSaidNotNow(pkg: String): Boolean =
-            synchronized(notNowAt) { SystemClock.elapsedRealtime() - (notNowAt[pkg] ?: -NOT_NOW_MS) < NOT_NOW_MS }
-        private const val NOT_NOW_MS = 4_000L
+        /** "Not now" means not now, and time's up means closed: if the app pops back up within a few
+         *  seconds (apps that open through a splash screen relaunch themselves, and an app on its way out
+         *  can report one more screen), it's sent home again without asking twice. */
+        fun saidNotNow(pkg: String) = sentHome(pkg)
+        private fun sentHome(pkg: String) { synchronized(sentHomeAt) { sentHomeAt[pkg] = SystemClock.elapsedRealtime() } }
+        private fun justSentHome(pkg: String): Boolean =
+            synchronized(sentHomeAt) { SystemClock.elapsedRealtime() - (sentHomeAt[pkg] ?: -SENT_HOME_MS) < SENT_HOME_MS }
+        private const val SENT_HOME_MS = 4_000L
 
         /** The status bar, notification shade and quick settings (Xiaomi draws its control centre in a plugin). */
         private val SYSTEM_UI = setOf("com.android.systemui", "miui.systemui.plugin")
@@ -162,7 +164,7 @@ class FocusGuardService : AccessibilityService() {
             // (a splash screen opened the real app over it), pause it again. If you just said "Not now"
             // to it, it doesn't get to ask twice: straight home instead.
             if (isApp(next) && Launch.decide(this, next) !is Decision.Open) {
-                if (justSaidNotNow(next)) Closer.toHome(this) else showGate(next)
+                if (justSentHome(next)) sendHome() else showGate(next)
             }
             return
         }
@@ -222,8 +224,15 @@ class FocusGuardService : AccessibilityService() {
                     scheduleExpiry(pkg)
                 }
             }
-            else -> if (justSaidNotNow(pkg)) Closer.toHome(this) else showGate(pkg)
+            else -> if (justSentHome(pkg)) sendHome() else showGate(pkg)
         }
+    }
+
+    /** Home in front, quietly (no picture-in-picture), and counted as in front from now on: the
+     *  launcher may not report itself again if it already was. */
+    private fun sendHome() {
+        Closer.toHome(this)
+        moveTo(HOME)
     }
 
     private fun showGate(pkg: String) {
@@ -267,7 +276,11 @@ class FocusGuardService : AccessibilityService() {
         // Time's up: the app closes. No screen asking to stay; a line on the home screen says why.
         val label = com.poshith.intent.data.Apps.labelFor(this, pkg)
         Store.flash = if (minutes > 0) "Your $minutes minutes on $label are done." else "Your time on $label is done."
+        // Closed means closed: a last screen it reports on its way out (or reopening it within a few
+        // seconds) sends it home again, with no pause screen popping up.
+        sentHome(pkg)
         Closer.close(this, pkg)
+        moveTo(HOME)
     }
 
     private fun onUnlock() {

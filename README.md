@@ -49,8 +49,9 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
 4. Optional but recommended: **turn on Focus Guard** (*Settings › Accessibility › Intent · Focus Guard*).
    On Android 13 and newer, apps installed from a file get a **"Restricted setting"** message at this step. Fix it like this: *Settings › Apps › Intent › ⋮ (top right) › Allow restricted settings*, then try again.
    On **Xiaomi, Redmi and POCO** phones, also allow *Display pop-up windows while running in the background* in Intent's permissions (Intent's Focus Guard screen has a button for it), or the pause can't appear over other apps.
-5. Optional: turn on **Intent · Shorts & Reels** in the same Accessibility list to pause the swipe through YouTube Shorts and Instagram Reels (Intent › Settings › Shorts and Reels walks you through it).
-6. Optional: allow **usage access** for unlock counts, and notifications for "your minutes are up" reminders when Focus Guard is off.
+5. For the **real break**, allow Intent **Notification access** once (the break sheet takes you there; on Android 13 and newer it may need the same "Allow restricted settings" step). That's what keeps every notification but calls away.
+6. Optional: turn on **Intent · Shorts & Reels** in the same Accessibility list to pause the swipe through YouTube Shorts and Instagram Reels (Intent › Settings › Shorts and Reels walks you through it).
+7. Optional: allow **usage access** for unlock counts, and notifications for "your minutes are up" reminders when Focus Guard is off.
 
 Requires Android 8.0 or newer. The APK is about 300 KB.
 

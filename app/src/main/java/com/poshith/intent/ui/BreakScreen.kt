@@ -36,6 +36,7 @@ class BreakScreen(private val a: BaseActivity, private val onOver: () -> Unit) {
         maxLines = 1
     }
     private val ring = PulseRing(a, k.accent)
+    private val col = a.vbox(Gravity.CENTER_HORIZONTAL)
     private val face = Face()
     private lateinit var barsL: (Bars) -> Unit
     private val h = Handler(Looper.getMainLooper())
@@ -53,9 +54,13 @@ class BreakScreen(private val a: BaseActivity, private val onOver: () -> Unit) {
             val side = minOf(w - a.dp(64), h - a.dp(20), a.dp(320)).coerceAtLeast(a.dp(150))
             val lp = ring.layoutParams as FrameLayout.LayoutParams
             if (lp.width != side) { lp.width = side; lp.height = side }
-            // The words are part of the drawing: they scale with the circle, not with the font size.
+            // The words are part of the drawing: they scale with the circle, not with the font size,
+            // and the lines under them wrap inside it instead of running over its edge.
             val px = side * 0.14f
             if (abs(words.textSize - px) > 0.5f) words.setTextSize(TypedValue.COMPLEX_UNIT_PX, px)
+            val inner = (side * 0.8f).toInt()
+            val cl = col.layoutParams as FrameLayout.LayoutParams
+            if (cl.width != inner) cl.width = inner
             super.onMeasure(widthSpec, heightSpec)
         }
     }
@@ -67,11 +72,11 @@ class BreakScreen(private val a: BaseActivity, private val onOver: () -> Unit) {
 
         // Top: the breathing circle, centred in the space that's left.
         face.addView(ring, FrameLayout.LayoutParams(a.dp(296), a.dp(296), Gravity.CENTER))
-        val col = a.vbox(Gravity.CENTER_HORIZONTAL)
         col.addView(a.text("REAL BREAK", 12.5f, k.text3, Fonts.medium(a)).apply { letterSpacing = 0.16f; gravity = Gravity.CENTER }, lp())
         col.addView(words, lp().apply { topMargin = a.dp(12) })
         col.addView(a.text("The phone will tell you when it's over.", 14f, k.text3).apply {
-            gravity = Gravity.CENTER; setPadding(a.dp(8), a.dp(10), a.dp(8), 0)
+            gravity = Gravity.CENTER; setPadding(0, a.dp(10), 0, 0)
+            breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
         }, lp())
         face.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         page.addView(face, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
