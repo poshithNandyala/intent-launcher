@@ -58,6 +58,10 @@ for _ in $(seq 1 60); do adb shell dumpsys activity | grep -q "mBooted=true\|BOO
 [ "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" -lt 29 ] && sleep 30
 [ "${NIGHT:-no}" = "yes" ] && adb shell cmd uimode night yes > /dev/null 2>&1
 adb install -r -g "$APK" > "$OUT/install.txt" 2>&1
+# The real break silences notifications (Do Not Disturb access) and sets aside the ones already
+# showing (Notification access); grant both as a person would.
+adb shell cmd notification allow_dnd $PKG > /dev/null 2>&1
+adb shell cmd notification allow_listener $PKG/$PKG.guard.BreakQuietService > /dev/null 2>&1
 # YouTube asks for notifications on first launch; answer it up front so the dialog doesn't get in the way.
 adb shell pm grant com.google.android.youtube android.permission.POST_NOTIFICATIONS > /dev/null 2>&1
 cat "$OUT/install.txt"
@@ -154,7 +158,7 @@ if adb shell pm list packages | grep -q "package:com.google.android.youtube"; th
     wait_top youtube 20
     snap session-started
     sleep 135
-    snap session-2-min-later    # expected: TimeUpActivity in front
+    snap session-2-min-later    # expected: YouTube closed, Intent's home in front (no time's-up screen)
     adb shell input keyevent KEYCODE_HOME
 fi
 
@@ -178,7 +182,17 @@ tap "Focus"; sleep 1
 record quiet-sheet
 tap "15 min"
 tap "Start the break"
+tap "Start anyway"          # only if a switch is missing (it shouldn't be)
 record break-screen
+adb shell settings get global zen_mode > "$OUT/break-zen.txt" 2>&1   # 1 = Do Not Disturb, priority only
+# A notification from another app during the break: expected nowhere (not on screen, not in the list).
+adb shell cmd notification post -S bigtext -t "Sale ends tonight" smoke "Tap to see the deals" > /dev/null 2>&1
+sleep 3
+adb shell cmd notification list > "$OUT/break-notifications.txt" 2>&1
+sleep 4 # Focus Guard comes back after the screen read
+adb shell cmd statusbar expand-notifications > /dev/null 2>&1
+sleep 2
+snap break-shade            # expected: the break screen, the shade closed again
 adb shell monkey -p com.google.android.youtube -c android.intent.category.LAUNCHER 1 > /dev/null 2>&1
 wait_top GateActivity 15
 snap break-blocks-youtube
@@ -189,7 +203,7 @@ read -r hx hy < <(python3 scripts/ui.py coords "Hold to end the break" | head -1
 record break-ended
 
 # Shorts and Reels: the Short you open plays; the first swipe to another one gets the pause, and
-# after "Watch 10 more", the 11th swipe gets it again. Both guards on, as most people would have them.
+# after "Watch 5 more", the 6th swipe gets it again. Both guards on, as most people would have them.
 # The stand-in is shaped like current YouTube: the scroller has no telling name, only the per-Short
 # page views (reel_player_page_container) say it's Shorts.
 flick() { adb shell input swipe "$((W / 2))" "$((H * 70 / 100))" "$((W / 2))" "$((H * 40 / 100))" 300; }
@@ -200,12 +214,12 @@ if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; 
     adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
     sleep 3
     flick
-    snap shorts-first-swipe        # expected: ReelsActivity, "Was that the one you came for?"
+    snap shorts-first-swipe        # expected: the feed closed, ReelsActivity over Intent's home
     record shorts-pause
-    tap "Watch 10 more"
+    tap "Watch 5 more"
     sleep 4 # the guard comes back after the screen read
-    for _ in $(seq 1 11); do flick; sleep 2.5; done
-    snap shorts-after-ten          # expected: ReelsActivity again, "That's 12 in a row"
+    for _ in $(seq 1 6); do flick; sleep 2.5; done
+    snap shorts-after-five         # expected: ReelsActivity again, "That's 7 in a row"
     record shorts-pause-again
     tap "Close"
     snap shorts-closed             # expected: Intent's home

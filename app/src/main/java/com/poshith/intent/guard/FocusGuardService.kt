@@ -13,7 +13,6 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.inputmethod.InputMethodManager
 import com.poshith.intent.GateActivity
 import com.poshith.intent.HomeActivity
-import com.poshith.intent.TimeUpActivity
 import com.poshith.intent.core.Decision
 import com.poshith.intent.data.Store
 import com.poshith.intent.data.Usage
@@ -24,7 +23,8 @@ import com.poshith.intent.data.Usage
  * What it does:  notices WHICH app comes to the front (package name only, from window-change events),
  *                asks the same rules as the home screen, shows the pause screen for mindful apps opened
  *                from anywhere (notifications, recents, links), counts a session's minutes only while
- *                that app is in front, and shows "time's up" when they're used.
+ *                that app is in front, and closes the app when they're used (no picture-in-picture,
+ *                nothing left playing). During a real break it keeps the notification shade closed.
  * What it can't: read the screen (canRetrieveWindowContent=false), see notifications or messages,
  *                go online (Intent has no internet permission), or stop you from turning it off.
  */
@@ -37,7 +37,6 @@ class FocusGuardService : AccessibilityService() {
 
         private const val HOME = "#home"
         private const val GATE = "#gate"
-        private const val TIMEUP = "#timeup"
         private const val SELF = "#self"
         private const val OFF = "#off"
 
@@ -70,6 +69,9 @@ class FocusGuardService : AccessibilityService() {
         private fun justSaidNotNow(pkg: String): Boolean =
             synchronized(notNowAt) { SystemClock.elapsedRealtime() - (notNowAt[pkg] ?: -NOT_NOW_MS) < NOT_NOW_MS }
         private const val NOT_NOW_MS = 4_000L
+
+        /** The status bar, notification shade and quick settings (Xiaomi draws its control centre in a plugin). */
+        private val SYSTEM_UI = setOf("com.android.systemui", "miui.systemui.plugin")
     }
 
     private val h = Handler(Looper.getMainLooper())
@@ -81,7 +83,7 @@ class FocusGuardService : AccessibilityService() {
     private var gatePendingAt = 0L
     /** Recent pause starts per app, so an app that keeps reopening itself can't start a loop. */
     private val gateStarts = HashMap<String, ArrayDeque<Long>>()
-    private var ignored: Set<String> = setOf("com.android.systemui")
+    private var ignored: Set<String> = SYSTEM_UI
     private val expireRunnable = Runnable { onExpire() }
 
     /** Rules change at minute boundaries (a check-in window ends, wind-down starts). While you stay
@@ -90,7 +92,7 @@ class FocusGuardService : AccessibilityService() {
         override fun run() {
             val pkg = current
             if (!isApp(pkg)) return
-            // A session that ran out without its timer firing still ends here, with "time's up".
+            // A session that ran out without its timer firing still ends here: the app closes.
             val s = Store.sessions { it[pkg] }
             if (s != null && Store.sessions { it.remainingMs(pkg, SystemClock.elapsedRealtime()) } <= 1_000) {
                 timing = pkg; onExpire(); return
@@ -129,7 +131,7 @@ class FocusGuardService : AccessibilityService() {
 
     private fun computeIgnored(): Set<String> {
         val out = HashSet<String>()
-        out += "com.android.systemui"
+        out += SYSTEM_UI
         try {
             (getSystemService(Context.INPUT_METHOD_SERVICE) as InputMethodManager).enabledInputMethodList.forEach { out += it.packageName }
         } catch (_: Exception) {}
@@ -139,11 +141,12 @@ class FocusGuardService : AccessibilityService() {
     override fun onAccessibilityEvent(e: AccessibilityEvent?) {
         if (e == null || e.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) return
         val pkg = e.packageName?.toString() ?: return
+        // A real break means no notifications at all: the shade (and quick settings) close as they open.
+        if (pkg in SYSTEM_UI) { if (Store.breakActive() && !Calls.active(this)) closeShade(); return }
         val cls = e.className?.toString() ?: ""
         val next = if (pkg == packageName) {
             when (cls) {
                 GateActivity::class.java.name -> { gatePending = null; GATE }
-                TimeUpActivity::class.java.name -> TIMEUP
                 HomeActivity::class.java.name -> HOME
                 else -> if (cls.startsWith("com.poshith.intent.")) SELF else return
             }
@@ -173,6 +176,22 @@ class FocusGuardService : AccessibilityService() {
         return "voip" in c || "incall" in c || "incomingcall" in c || ("call" in c && "activity" in c && "log" !in c && "history" !in c)
     }
 
+    private val shadeCloser = Runnable {
+        if (Build.VERSION.SDK_INT >= 31) performGlobalAction(GLOBAL_ACTION_DISMISS_NOTIFICATION_SHADE)
+        else try {
+            // Older Android: the status bar service collapses its panels (EXPAND_STATUS_BAR permission).
+            val sb = getSystemService("statusbar")
+            Class.forName("android.app.StatusBarManager").getMethod("collapsePanels").invoke(sb)
+        } catch (_: Exception) {}
+    }
+
+    private fun closeShade() {
+        h.removeCallbacks(shadeCloser)
+        h.postDelayed(shadeCloser, 40)
+        // Some phones open it in stages (notifications, then quick settings): close again a moment later.
+        h.postDelayed({ if (Store.breakActive() && !Calls.active(this)) shadeCloser.run() }, 450)
+    }
+
     private fun moveTo(next: String) {
         if (next == current) return
         val prev = current
@@ -180,8 +199,12 @@ class FocusGuardService : AccessibilityService() {
         lastFront = next
         val now = SystemClock.elapsedRealtime()
         if (isApp(prev)) {
+            val hadSession = Store.sessions { it.isActive(prev, now) }
             Store.sessions { it.stop(prev, now) }
             if (timing == prev) { h.removeCallbacks(expireRunnable); timing = null }
+            // Its minutes stop counting while you're away, so its video shouldn't keep playing either
+            // (in a little picture-in-picture window, say). Intent's own screens don't count as away.
+            if (hadSession && next != GATE && next != SELF && Store.rule(prev).mode == com.poshith.intent.core.Mode.MINDFUL) Closer.silence(this)
         }
         h.removeCallbacks(recheck)
         if (isApp(next)) {
@@ -218,7 +241,7 @@ class FocusGuardService : AccessibilityService() {
         gatePendingAt = now
         try {
             startActivity(GateActivity.intent(this, pkg, null, fromLauncher = false)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))
+                .addFlags(Closer.OVER_APP or Intent.FLAG_ACTIVITY_NO_ANIMATION))
         } catch (_: Exception) {}
     }
 
@@ -237,12 +260,14 @@ class FocusGuardService : AccessibilityService() {
         val now = SystemClock.elapsedRealtime()
         val rem = Store.sessions { it.remainingMs(pkg, now) }
         if (rem > 1_000) { scheduleExpiry(pkg); return }
-        Store.sessions { it.stop(pkg, now) }
+        val minutes = ((Store.sessions { it[pkg] }?.allowanceMs ?: 0L) / 60_000L).toInt()
+        Store.sessions { it.close(pkg) }
         Store.markEnded(pkg)
         timing = null
-        try {
-            startActivity(TimeUpActivity.intent(this, pkg).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (_: Exception) {}
+        // Time's up: the app closes. No screen asking to stay; a line on the home screen says why.
+        val label = com.poshith.intent.data.Apps.labelFor(this, pkg)
+        Store.flash = if (minutes > 0) "Your $minutes minutes on $label are done." else "Your time on $label is done."
+        Closer.close(this, pkg)
     }
 
     private fun onUnlock() {
@@ -266,7 +291,7 @@ class FocusGuardService : AccessibilityService() {
             when {
                 // Still on one of Intent's own screens (the pause just closed): the app is coming up.
                 // Not if you're on the home screen: then you really are home.
-                current == GATE || current == TIMEUP || current == SELF -> moveTo(pkg)
+                current == GATE || current == SELF -> moveTo(pkg)
                 current == pkg && timing != pkg && Store.sessions { it.isActive(pkg, SystemClock.elapsedRealtime()) } -> scheduleExpiry(pkg)
             }
         }, 700)

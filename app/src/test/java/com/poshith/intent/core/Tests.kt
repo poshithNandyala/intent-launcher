@@ -226,6 +226,10 @@ fun main() {
     check("lessons have sources", Lessons.all.all { it.source.isNotBlank() && it.body.length > 60 && it.tryThis.isNotBlank() })
     check("lesson ids unique", Lessons.all.map { it.id }.toSet().size == Lessons.all.size)
     check("every topic has lessons", Topic.values().all { Lessons.byTopic(it).size >= 4 })
+    check("every lesson starts with a guess", Lessons.all.all { Guesses.forLesson(it.id) != null })
+    check("guesses have 2 or 3 distinct options and a valid answer", Lessons.all.mapNotNull { Guesses.forLesson(it.id) }.all { g ->
+        g.options.size in 2..3 && g.options.toSet().size == g.options.size && g.answer in g.options.indices && g.question.length in 10..140
+    })
     check("lesson of the day stable", Lessons.forDay(20000).id == Lessons.forDay(20000).id && Lessons.forDay(-5) != null)
 
     println("$passes passed, $failures failed")

@@ -14,6 +14,7 @@ import com.poshith.intent.core.Quotes
 import com.poshith.intent.core.Sitting
 import com.poshith.intent.data.Stats
 import com.poshith.intent.data.Store
+import com.poshith.intent.guard.Closer
 import com.poshith.intent.guard.Launch
 import com.poshith.intent.guard.ReelsGuardService
 import com.poshith.intent.ui.BaseActivity
@@ -32,9 +33,9 @@ import com.poshith.intent.ui.vbox
 import com.poshith.intent.ui.vflex
 
 /**
- * The pause over YouTube Shorts or Instagram Reels, shown by the Shorts & Reels guard when you start
- * swiping (and again after the number you chose). Today's count, one line worth reading, a big way out,
- * and a small way on.
+ * The pause after YouTube Shorts or Instagram Reels, shown by the Shorts & Reels guard when you start
+ * swiping (and again after the number you chose). The app has already been closed behind it, so
+ * nothing plays on. Today's count, one line worth reading, a big way out, and a small way back in.
  */
 class ReelsActivity : BaseActivity() {
 
@@ -72,13 +73,13 @@ class ReelsActivity : BaseActivity() {
         ask = runCatching { Sitting.Ask.valueOf(i.getStringExtra(EXTRA_ASK) ?: "") }.getOrDefault(Sitting.Ask.START)
     }
 
-    // Home or another app instead of a choice: nothing is granted, the next swipe asks again.
+    // Home or another app instead of a choice: nothing is granted, the app stays closed.
     override fun onStop() {
         super.onStop()
         if (!leaving && !isFinishing && !isChangingConfigurations) finish()
     }
 
-    override fun onBackRoot() = leaveFeed()
+    override fun onBackRoot() = closeApp()
 
     private fun build() {
         host.removeAllViews()
@@ -155,25 +156,29 @@ class ReelsActivity : BaseActivity() {
         return t
     }
 
+    /** Stay out: the app is already closed behind this screen; make sure it stays quiet. */
     private fun closeApp() {
         if (leaving) return
         leaving = true
         Store.sessions { it.close(pkg) }
-        if (!ReelsGuardService.goHome()) Launch.goHome(this)
+        Closer.close(this, pkg)
         finish()
     }
 
+    /** Back into the app, out of its Shorts or Reels. */
     private fun leaveFeed() {
         if (leaving) return
         leaving = true
-        ReelsGuardService.leaveFeed()
+        if (!ReelsGuardService.leaveFeed(this, pkg)) Launch.goHome(this)
         finish()
     }
 
+    /** Back to the feed, with N more before the next pause. */
     private fun keepGoing() {
         if (leaving) return
         leaving = true
         ReelsGuardService.keepGoing(feed)
+        Closer.reopen(this, pkg)
         finish()
     }
 

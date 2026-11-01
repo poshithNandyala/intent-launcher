@@ -57,7 +57,7 @@ object Store {
     /** Shorts and Reels: step in when you start swiping (needs the "Intent · Shorts & Reels" service). */
     var reelsOn: Boolean get() = bool("reels_on", true); set(v) = putB("reels_on", v)
     /** After "watch more", how many swipes before Intent asks again. 0: the swipe always stops you. */
-    var reelsAllow: Int get() = int("reels_allow", 10); set(v) = putI("reels_allow", v)
+    var reelsAllow: Int get() = int("reels_allow", 5); set(v) = putI("reels_allow", v)
     /** If the unlock question gets no answer, lock the phone again (needs Focus Guard). */
     var lockIfNoAnswer: Boolean get() = bool("lock_no_answer", true); set(v) = putB("lock_no_answer", v)
     var autoOpenSingle: Boolean get() = bool("auto_open_single", false); set(v) = putB("auto_open_single", v)
@@ -254,6 +254,15 @@ object Store {
     /** A short message the home screen shows once ("Not now. That's the 3rd time today."). */
     var flash: String get() = str("flash"); set(v) { put("flash", v); putL("flash_at", System.currentTimeMillis()) }
     val flashAt: Long get() = long("flash_at", 0)
+
+    // ------------------------------------------------------------------ the Mind library
+    /** Lessons you've opened (guessed, then read), and the "try this" ideas you said you'd try. */
+    var lessonsRead: Set<String>
+        get() = jsonList(str("lessons_read")).toSet()
+        set(v) = put("lessons_read", JSONArray(v.toList()).toString())
+    var lessonsTrying: Set<String>
+        get() = jsonList(str("lessons_trying")).toSet()
+        set(v) = put("lessons_trying", JSONArray(v.toList()).toString())
 
     // ------------------------------------------------------------------ notification cleanup checklist
     var notifReviewed: Set<String>

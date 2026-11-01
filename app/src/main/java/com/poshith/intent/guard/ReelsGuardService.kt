@@ -26,7 +26,7 @@ import com.poshith.intent.data.Store
  *                in res/xml/reels_guard.xml). For each scroll it looks at the names of the view that
  *                scrolled and the views around it, to tell a swipe through Shorts or Reels from
  *                scrolling comments or the home feed. It counts those swipes and, when you start one
- *                (and after the number you chose), shows Intent's pause screen.
+ *                (and after the number you chose), closes the app and shows Intent's pause screen.
  * What it can't: read text, see any other app, or go online (Intent has no internet permission).
  */
 class ReelsGuardService : AccessibilityService() {
@@ -42,14 +42,13 @@ class ReelsGuardService : AccessibilityService() {
         /** "Watch N more" on the pause screen. */
         fun keepGoing(f: Feed) = synchronized(sittings) { sitting(f).keepGoing(Store.reelsAllow) }
 
-        /** Out of the feed but still in the app: Android's Back, once the pause screen has gone. */
-        fun leaveFeed(): Boolean {
-            val s = instance ?: return false
-            s.h.postDelayed({ s.performGlobalAction(GLOBAL_ACTION_BACK) }, 350)
+        /** Back into the app, out of its feed: the app comes back where it was, then Android's Back. */
+        fun leaveFeed(ctx: Context, pkg: String): Boolean {
+            if (!Closer.reopen(ctx, pkg)) return false
+            val s = instance ?: return true
+            s.h.postDelayed({ s.performGlobalAction(GLOBAL_ACTION_BACK) }, 900)
             return true
         }
-
-        fun goHome(): Boolean = instance?.performGlobalAction(GLOBAL_ACTION_HOME) ?: false
 
         /** Switched on in Android's accessibility settings (it may be between restarts right now). */
         fun isOn(ctx: Context): Boolean {
@@ -196,9 +195,12 @@ class ReelsGuardService : AccessibilityService() {
         askedAt = now
         // Whatever is in front when you come back is the new starting point, not a swipe.
         lastPage = null
+        // The app goes first (home in front without "user leaving", so no picture-in-picture, and its
+        // sound stops), then the pause appears over the home screen.
+        Closer.toHome(this)
+        Closer.silence(this)
         try {
-            startActivity(ReelsActivity.intent(this, feed, pkg, ask)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_ANIMATION))
+            startActivity(ReelsActivity.intent(this, feed, pkg, ask).addFlags(Closer.OVER_APP or Intent.FLAG_ACTIVITY_NO_ANIMATION))
         } catch (_: Exception) {}
     }
 

@@ -12,9 +12,10 @@ import com.poshith.intent.data.Store
 
 /**
  * A real break: only calls get through. Intent shows a dark, quiet screen instead of the home screen
- * (no timer to watch), Focus Guard keeps every other app closed, "Do Not Disturb access" keeps every
- * sound but calls and alarms off, and "Notification access" sets every notification but calls aside
- * until the break is over. When it ends, Do Not Disturb goes back exactly as it was.
+ * (no timer to watch), Focus Guard keeps every other app and the notification shade closed,
+ * "Do Not Disturb access" keeps every sound but calls and alarms off, and "Notification access" sets
+ * every notification but calls aside until the break is over. When it ends, Do Not Disturb goes back
+ * exactly as it was.
  */
 object Break {
     const val MAX_MIN = 8 * 60
@@ -114,7 +115,11 @@ object Dnd {
                     NotificationManager.Policy.SUPPRESSED_EFFECT_BADGE or NotificationManager.Policy.SUPPRESSED_EFFECT_AMBIENT or
                     NotificationManager.Policy.SUPPRESSED_EFFECT_NOTIFICATION_LIST
             } else NotificationManager.Policy.SUPPRESSED_EFFECT_SCREEN_OFF or NotificationManager.Policy.SUPPRESSED_EFFECT_SCREEN_ON
-            nm.notificationPolicy = NotificationManager.Policy(categories, NotificationManager.Policy.PRIORITY_SENDERS_ANY,
+            // Calls from anyone; no messages, and (Android 11+) no "priority conversations" either.
+            nm.notificationPolicy = if (Build.VERSION.SDK_INT >= 30) NotificationManager.Policy(categories,
+                NotificationManager.Policy.PRIORITY_SENDERS_ANY, NotificationManager.Policy.PRIORITY_SENDERS_ANY, hidden,
+                NotificationManager.Policy.CONVERSATION_SENDERS_NONE)
+            else NotificationManager.Policy(categories, NotificationManager.Policy.PRIORITY_SENDERS_ANY,
                 NotificationManager.Policy.PRIORITY_SENDERS_ANY, hidden)
             nm.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
             Store.dndOurs = true

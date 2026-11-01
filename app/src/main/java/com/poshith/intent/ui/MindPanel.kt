@@ -71,12 +71,30 @@ class MindPanel(private val a: BaseActivity) {
     private fun build() {
         col.removeAllViews()
         col.addView(a.text("Mind", 40f, P.text, Fonts.light(a)).apply { setPadding(a.dp(24), 0, a.dp(24), 0) })
-        col.addView(a.paragraph("Short lessons from research, each with its source and an honest label for how strong the evidence is. Read one, then put the phone down."))
+        col.addView(a.paragraph("One idea a day from the research. Guess first, then see what they found. A minute, then put the phone down."))
 
-        // Today's lesson, open.
+        // How far along you are, and a way to pick at random.
+        val read = Store.lessonsRead.count { id -> Lessons.all.any { it.id == id } }
+        val total = Lessons.all.size
+        val prog = a.hbox(Gravity.CENTER_VERTICAL).apply { setPadding(a.dp(24), a.dp(6), a.dp(24), a.dp(4)) }
+        val bar = a.hbox().apply { background = rounded(P.surface2, a.dp(3).toFloat()); clipToOutline = true }
+        if (read > 0) bar.addView(View(a).apply { background = rounded(P.accent, a.dp(3).toFloat()) }, LinearLayout.LayoutParams(0, a.dp(5), read.toFloat()))
+        if (read < total) bar.addView(View(a), LinearLayout.LayoutParams(0, a.dp(5), (total - read).toFloat()))
+        prog.addView(bar, LinearLayout.LayoutParams(0, a.dp(5), 1f))
+        prog.addView(a.text("$read of $total", 13.5f, P.text2, Fonts.medium(a)).apply { setPadding(a.dp(14), 0, 0, 0) })
+        col.addView(prog, lp())
+        col.addView(Chip(a, "Surprise me").apply {
+            setOnClickListener {
+                it.tick()
+                val unread = Lessons.all.filter { l -> l.id !in Store.lessonsRead }
+                openLesson((unread.ifEmpty { Lessons.all }).random())
+            }
+        }, lp(ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = a.dp(24); topMargin = a.dp(10) })
+
+        // Today's idea, as a small puzzle.
         val today = Lessons.forDay(System.currentTimeMillis() / 86_400_000L)
-        col.addView(a.sectionTitle("Today"))
-        col.addView(card(lessonFull(today)), lp().apply { leftMargin = a.dp(16); rightMargin = a.dp(16) })
+        col.addView(a.sectionTitle("Today · one minute"))
+        col.addView(card(lessonCard(today)), lp().apply { leftMargin = a.dp(16); rightMargin = a.dp(16) })
 
         // This week, from Intent's own counters (and Android's usage data if you allowed it).
         col.addView(a.sectionTitle("Your week"))
@@ -86,8 +104,10 @@ class MindPanel(private val a: BaseActivity) {
         val sessions = days.sumOf { it.sessions }
         val planned = days.sumOf { it.plannedMin }
         val checking = days.sumOf { it.justChecking }
+        val videos = days.sumOf { it.shorts + it.reels }
         week.addView(a.text(if (notNow == 0) "No “Not now” yet this week. The first one is the hardest." else "You chose “Not now” $notNow time${if (notNow == 1) "" else "s"} this week.", 17f, P.text, Fonts.medium(a)))
         week.addView(line("$sessions mindful session${if (sessions == 1) "" else "s"} · $planned min planned" + if (checking > 0) " · noticed “just checking” $checking×" else ""))
+        if (videos > 0) week.addView(line("$videos short video${if (videos == 1) "" else "s"} swiped to this week"))
         val usageLine = line("")
         usageLine.visibility = View.GONE
         week.addView(usageLine)
@@ -106,7 +126,7 @@ class MindPanel(private val a: BaseActivity) {
             if (text.isNotBlank()) a.runOnUiThread { if (!a.isDestroyed) { usageLine.text = text; usageLine.visibility = View.VISIBLE } }
         }
 
-        // The library.
+        // The library: tap any idea to guess and read it.
         for (t in Topic.values()) {
             col.addView(a.sectionTitle(t.title))
             col.addView(a.paragraph(t.blurb, 14.5f, P.text3))
@@ -117,7 +137,9 @@ class MindPanel(private val a: BaseActivity) {
         col.addView(a.text("That's everything.\nNow go do your one thing.", 20f, P.text2, Fonts.light(a)).apply {
             gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f); setPadding(a.dp(24), a.dp(24), a.dp(24), a.dp(8))
         }, lp())
-        col.addView(a.text("${Lessons.all.size} lessons · sources in each card", 13f, P.text3).apply { gravity = Gravity.CENTER }, lp())
+        col.addView(a.text("$total ideas · each with its source and how strong the evidence is", 13f, P.text3).apply {
+            gravity = Gravity.CENTER; setPadding(a.dp(24), 0, a.dp(24), 0)
+        }, lp())
     }
 
     private fun line(s: String, color: Int = P.text2): TextView = a.text(s, 15f, color).apply {
@@ -135,43 +157,97 @@ class MindPanel(private val a: BaseActivity) {
         Evidence.MIXED -> P.warn
     }
 
-    private fun lessonFull(l: Lesson): View {
+    /**
+     * One idea: the guess first (a quick question, two or three answers), then the lesson itself.
+     * Once you've guessed, the answer and the lesson stay open the next time you come back.
+     */
+    private fun lessonCard(l: Lesson): View {
         val v = a.vbox().apply { setPadding(a.dp(20), a.dp(18), a.dp(20), a.dp(18)) }
-        v.addView(a.text(l.title, 19f, P.text, Fonts.medium(a)).apply { setLineSpacing(0f, 1.15f) })
-        v.addView(a.text(l.body, 16f, P.text).apply { setLineSpacing(0f, 1.32f); setPadding(0, a.dp(10), 0, 0) })
-        v.addView(a.text("Try this: ${l.tryThis}", 15.5f, P.accent).apply { setLineSpacing(0f, 1.25f); setPadding(0, a.dp(12), 0, 0) })
-        v.addView(a.text("${l.evidence.label} · ${l.source}", 13f, evidenceColor(l.evidence)).apply {
-            alpha = 0.9f; setLineSpacing(0f, 1.2f); setPadding(0, a.dp(12), 0, 0)
-        })
+        val g = com.poshith.intent.core.Guesses.forLesson(l.id)
+        val reveal = a.vbox()
+        fun fillReveal(chosen: Int?) {
+            reveal.removeAllViews()
+            if (g != null && chosen != null) {
+                val right = chosen == g.answer
+                reveal.addView(a.text(if (right) "Right." else "Not quite: ${g.options[g.answer].replaceFirstChar { it.lowercase() }}.",
+                    15.5f, if (right) P.accent else P.text2, Fonts.medium(a)).apply { setPadding(0, a.dp(12), 0, a.dp(2)) })
+            }
+            reveal.addView(a.text(l.title, 19f, P.text, Fonts.medium(a)).apply { setLineSpacing(0f, 1.15f); setPadding(0, a.dp(10), 0, 0) })
+            reveal.addView(a.text(l.body, 16f, P.text).apply { setLineSpacing(0f, 1.32f); setPadding(0, a.dp(10), 0, 0) })
+            reveal.addView(a.text("TRY THIS", 11.5f, P.text3, Fonts.medium(a)).apply { letterSpacing = 0.1f; setPadding(0, a.dp(16), 0, 0) })
+            reveal.addView(a.text(l.tryThis, 16f, P.accent).apply { setLineSpacing(0f, 1.25f); setPadding(0, a.dp(4), 0, 0) })
+            val trying = Chip(a, "I'll try it").apply {
+                on = l.id in Store.lessonsTrying
+                text = if (on) "Trying it" else "I'll try it"
+                setOnClickListener {
+                    it.tick()
+                    val now = l.id !in Store.lessonsTrying
+                    Store.lessonsTrying = if (now) Store.lessonsTrying + l.id else Store.lessonsTrying - l.id
+                    on = now; text = if (now) "Trying it" else "I'll try it"
+                }
+            }
+            reveal.addView(trying, lp(ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = a.dp(12) })
+            reveal.addView(a.text("${l.evidence.label} · ${l.source}", 13f, evidenceColor(l.evidence)).apply {
+                alpha = 0.9f; setLineSpacing(0f, 1.2f); setPadding(0, a.dp(14), 0, 0)
+            })
+        }
+
+        if (g == null) {
+            fillReveal(null)
+            v.addView(reveal, lp())
+            Store.lessonsRead = Store.lessonsRead + l.id
+            return v
+        }
+
+        v.addView(a.text(g.question, 18f, P.text, Fonts.medium(a)).apply { setLineSpacing(0f, 1.2f) })
+        val flow = Flow(a).apply { setPadding(0, a.dp(12), 0, 0) }
+        val chips = g.options.mapIndexed { i, label -> Chip(a, label).also { flow.addView(it) } to i }
+        v.addView(flow, lp())
+        v.addView(reveal, lp())
+
+        fun settle(chosen: Int?, animate: Boolean) {
+            for ((c, i) in chips) {
+                c.isClickable = false
+                c.on = i == g.answer
+                c.alpha = if (i == g.answer || i == chosen) 1f else 0.45f
+                if (chosen != null && i == chosen && i != g.answer) c.setTextColor(P.warn)
+            }
+            fillReveal(chosen)
+            if (animate && a.animationsOn()) {
+                reveal.alpha = 0f; reveal.translationY = a.dp(10).toFloat()
+                reveal.animate().alpha(1f).translationY(0f).setDuration(380).setInterpolator(DecelerateInterpolator(2f)).start()
+            }
+        }
+
+        if (l.id in Store.lessonsRead) settle(null, animate = false)
+        else for ((c, i) in chips) c.setOnClickListener {
+            it.tick()
+            Store.lessonsRead = Store.lessonsRead + l.id
+            settle(i, animate = true)
+        }
         return v
     }
 
+    /** A lesson on its own, as a card that slides up: from the library or "Surprise me". */
+    private fun openLesson(l: Lesson) {
+        val s = Sheet(a, null)
+        s.content.addView(lessonCard(l), lp())
+        s.onDismiss = { if (isOpen) { val y = sc.scrollY; build(); sc.post { sc.scrollTo(0, y) } } }
+        s.show()
+    }
+
     private fun lessonRow(l: Lesson): View {
-        val wrap = a.vbox()
+        val read = l.id in Store.lessonsRead
         val head = a.hbox().apply {
             minimumHeight = a.dp(56)
             setPadding(a.dp(24), a.dp(12), a.dp(24), a.dp(12))
             background = ripple(null)
             isClickable = true
+            setOnClickListener { it.tick(); openLesson(l) }
         }
-        head.addView(a.text(l.title, 16.5f, P.text).apply { setLineSpacing(0f, 1.15f) }, lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        head.addView(a.text(l.evidence.label.substringBefore(' '), 12.5f, evidenceColor(l.evidence), Fonts.medium(a)).apply {
-            setPadding(a.dp(12), 0, 0, 0)
-        })
-        wrap.addView(head, lp())
-        var body: View? = null
-        head.setOnClickListener {
-            it.tick()
-            val b = body
-            if (b == null) {
-                val full = lessonFull(l)
-                val c = card(full)
-                wrap.addView(c, lp().apply { leftMargin = a.dp(16); rightMargin = a.dp(16); bottomMargin = a.dp(8) })
-                body = c
-            } else {
-                wrap.removeView(b); body = null
-            }
-        }
-        return wrap
+        head.addView(a.text(l.title, 16.5f, if (read) P.text2 else P.text).apply { setLineSpacing(0f, 1.15f) }, lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        head.addView(a.text(if (read) "Read" else l.evidence.label.substringBefore(' '), 12.5f,
+            if (read) P.text3 else evidenceColor(l.evidence), Fonts.medium(a)).apply { setPadding(a.dp(12), 0, 0, 0) })
+        return head
     }
 }

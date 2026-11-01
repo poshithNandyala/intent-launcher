@@ -21,20 +21,20 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
 | **Text home screen** | Time, date, today's one thing, and up to 7 apps you chose, written as words on your own wallpaper (the words turn light or dark to stay readable; dim it or go plain if you like). No icons, no badges, no red dots. |
 | **Find anything by typing** | Swipe up and type. Nothing to browse, so you open what you came for. |
 | **The pause** | Apps you mark *mindful* (Instagram, YouTube…) open after one slow breath, a question about how you feel and what it's for, and a session length you pick. **"Not now" is always the biggest button.** |
-| **Sessions that end** | With Focus Guard on, Intent counts only the minutes the app is actually in front, and shows "time's up" when you reach your number. One "2 more minutes", then you stop. |
+| **Sessions that end** | With Focus Guard on, Intent counts only the minutes the app is actually in front, and when you reach your number it closes the app. No pop-up asking to stay: you're back on your home screen with a line saying so, and nothing keeps playing (no picture-in-picture window). |
 | **The pause grows** | Every session after the second one today waits 2 s longer (max 20 s). You can turn this off. |
 | **Essentials never wait** | Phone, messages, OTPs, UPI, maps, camera, authenticator, the clock and keyboards are never paused. Wi-Fi, Bluetooth, hotspot and mobile data are untouched. |
-| **A real break** | The strictest mode: your home screen goes dark with no timer to watch, only calls get through, and with Notification access and Do Not Disturb access every other notification is set aside until the break ends (then they all come back). 15 min to 1 h 30, or type your own. |
+| **A real break** | The strictest mode: your home screen goes dark with no timer to watch, and only calls get through. Every other notification is silenced and set aside until the break ends (then they all come back), and the notification shade won't open. Needs Notification access and Focus Guard, one switch each. 15 min to 1 h 30, or type your own. |
 | **Focus and basic phone** | Deep work (25/50/90 min) with your essentials, or *basic phone*: only your essentials, with no search at all, until you turn it off. Ending anything early means holding a button for 3 s. |
 | **Morning quiet** | Mindful apps rest for the first 15 minutes after your first unlock of the morning, so your first thoughts are your own. |
 | **Wind-down** | At night, mindful apps rest (optionally all non-essentials). |
 | **Check-in times** | Email or work chat can open only in your check-in windows (12:30 and 18:30 by default). |
 | **"What did you pick up your phone for?"** | A quiet card right after you unlock. "A call or message" shows Phone, Messages and WhatsApp; "Just checking" locks the phone; no answer in 15 s locks it too (with Focus Guard). |
-| **Shorts and Reels** | The one you open is fine; the endless swipe is the trap. With the optional Shorts & Reels guard, the first swipe through YouTube Shorts or Instagram Reels gets a pause: today's count, a line worth reading, a big "Close YouTube", "Leave Shorts" to keep the rest of the app, and a small "Watch 10 more" (or none, if you'd rather the swipe always stops you). Each "more" waits a little longer. The count shows on your home screen too. |
-| **A line worth stopping for** | A quote under the date, new every 30 seconds, on a soft pane so it reads on any wallpaper: Seneca, Thoreau, Annie Dillard, James Clear, Alex Hormozi and others, plus a few of Intent's own. Another waits on the pause, the break and "time's up". Tap it for the next; turn it off in Settings. |
+| **Shorts and Reels** | The one you open is fine; the endless swipe is the trap. With the optional Shorts & Reels guard, the first swipe through YouTube Shorts or Instagram Reels closes the app (nothing keeps playing) and shows a pause: today's count, a line worth reading, a big "Close YouTube", "Leave Shorts" to go back to the rest of the app, and a small "Watch 5 more" (or none, if you'd rather the swipe always stops you). Each "more" waits a little longer. The count shows on your home screen too. |
+| **A line worth stopping for** | A quote under the date, new every 30 seconds, on a soft pane so it reads on any wallpaper: Seneca, Thoreau, Annie Dillard, James Clear, Alex Hormozi and others, plus a few of Intent's own. Another waits on the pause, the break and the Shorts pause. Tap it for the next; turn it off in Settings. |
 | **Screen time you can feel** | Today's screen time under the date. Time in the apps that pull you grows heavier as it climbs; calls, maps and work are never singled out. |
 | **Rules you set while calm** | Making an app harder to open is instant. Making it easier waits 20 s (adjustable). Nothing ever stops you from changing a rule, switching launchers or uninstalling. |
-| **The Mind library** | Swipe right: 50+ short lessons, each with its source and an honest evidence label, covering the science and how people like Warren Buffett, Bill Gates, Pavel Durov and Christopher Nolan use (or don't use) their phones. It ends, on purpose. |
+| **The Mind library** | Swipe right: 56 short ideas from research, each a little puzzle first ("Out of 10 pickups, how many are your own idea?"), then the answer, a thing to try, and its source with an honest evidence label. Covers the science and how people like Warren Buffett, Bill Gates, Pavel Durov and Christopher Nolan use (or don't use) their phones. Shows how many you've read; "Surprise me" picks one. It ends, on purpose. |
 | **Quiet notifications** | A guided checklist to switch off alerts from anything that isn't a person. |
 | **Honest numbers** | Unlocks today and minutes in mindful apps (with usage access), and how often you chose "Not now". No streaks to lose. |
 
@@ -50,7 +50,7 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
    On Android 13 and newer, apps installed from a file get a **"Restricted setting"** message at this step. Fix it like this: *Settings › Apps › Intent › ⋮ (top right) › Allow restricted settings*, then try again.
    On **Xiaomi, Redmi and POCO** phones, also allow *Display pop-up windows while running in the background* in Intent's permissions (Intent's Focus Guard screen has a button for it), or the pause can't appear over other apps.
 5. Optional: turn on **Intent · Shorts & Reels** in the same Accessibility list to pause the swipe through YouTube Shorts and Instagram Reels (Intent › Settings › Shorts and Reels walks you through it).
-6. Optional: allow **usage access** for unlock counts, and notifications for "time's up" reminders when Focus Guard is off.
+6. Optional: allow **usage access** for unlock counts, and notifications for "your minutes are up" reminders when Focus Guard is off.
 
 Requires Android 8.0 or newer. The APK is about 300 KB.
 

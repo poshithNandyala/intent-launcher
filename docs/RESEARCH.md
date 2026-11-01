@@ -30,7 +30,7 @@ Evidence labels used in the app: **Strong** (large randomized trials or meta-ana
 
 | Finding | Source | What Intent does with it |
 |---|---|---|
-| Receiving a notification, even without interacting, disrupted an attention task. | Stothart, Mitchum & Yehnert (2015), *J. of Experimental Psychology: HPP* | Quiet notifications checklist. Intent itself sends nothing except an optional "time's up". |
+| Receiving a notification, even without interacting, disrupted an attention task. | Stothart, Mitchum & Yehnert (2015), *J. of Experimental Psychology: HPP* | Quiet notifications checklist. Intent itself sends nothing except an optional "your minutes are up" reminder. |
 | Alerts on + phone nearby for a week → more inattention and hyperactivity symptoms (221 people). | Kushlev, Proulx & Dunn (2016), *CHI* | Same, plus "park the phone" guidance for focus. |
 | Three notification batches a day improved well-being; no notifications at all raised anxiety and FOMO (237 people). | Fitz et al. (2019), *Computers in Human Behavior* | Check-in times for email and work chat, not a total blackout; calls and people always get through. |
 | Checking email 3×/day lowered daily stress (124 adults, within-person). | Kushlev & Dunn (2015), *Computers in Human Behavior* | Check-in times default to two 20-minute windows (12:30, 18:30). |
@@ -63,6 +63,7 @@ Evidence labels used in the app: **Strong** (large randomized trials or meta-ana
 | A year of walking 3×/week grew the hippocampus ~2% in older adults (RCT, 120 people). | Erickson et al. (2011), *PNAS* | Lesson. |
 | Sleep consolidates memory. | Diekelmann & Born (2010), *Nature Reviews Neuroscience* | Lesson. |
 | Psychological detachment from work predicts recovery and well-being. | Sonnentag & Fritz (2007), *J. of Occupational Health Psychology* | Break mode, the 3M lesson. |
+| Trying to answer a question before learning the answer improves later recall, even when the guess is wrong (the pretesting effect). | Kornell, Hays & Bjork (2009), *J. of Experimental Psychology: LMC*; Richland, Kornell & Kao (2009), *J. of Experimental Psychology: Applied* | Every Mind lesson opens with a quick guess. |
 
 ## People (real-world examples, not evidence)
 
@@ -80,7 +81,7 @@ Evidence labels used in the app: **Strong** (large randomized trials or meta-ana
 
 - A launcher controls its own home screen. Apps opened from notifications, recents or links bypass it unless an accessibility service (Focus Guard) notices them. Intent says this plainly.
 - Focus Guard listens only to `typeWindowStateChanged` with `canRetrieveWindowContent="false"`.
-- Background activity starts are allowed for bound accessibility services, which is how the pause and "time's up" screens appear.
+- Background activity starts are allowed for bound accessibility services, which is how the pause screens appear.
 - Unlocking can resume the previous app instead of the home screen, so the unlock check-in is shown when home is actually visible, and Focus Guard re-checks the app in front after unlocking.
 - Android 13+ restricts accessibility for sideloaded apps until the user allows "restricted settings".
 - Bluetooth, Wi-Fi, hotspot and mobile data are device services. Intent never touches them; swipe down opens quick settings.

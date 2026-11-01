@@ -16,6 +16,8 @@
     <!-- Optional, granted by you in Settings: during a real break, silence everything except calls
          and alarms, then put Do Not Disturb back exactly as it was. -->
     <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <!-- Closing an app when its minutes are up (Android 13 and older; newer Android ignores it). -->
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
     <!-- Only used to open your alarm list when you tap the clock. -->
     <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
 
@@ -86,13 +88,6 @@
             android:launchMode="singleTask"
             android:taskAffinity="com.poshith.intent.gate"
             android:windowSoftInputMode="adjustResize|stateHidden" />
-
-        <activity
-            android:name=".TimeUpActivity"
-            android:excludeFromRecents="true"
-            android:exported="false"
-            android:launchMode="singleTask"
-            android:taskAffinity="com.poshith.intent.gate" />
 
         <!-- The pause over YouTube Shorts and Instagram Reels (from the Shorts & Reels guard). -->
         <activity

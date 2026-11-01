@@ -35,6 +35,7 @@ import com.poshith.intent.data.Stats
 import com.poshith.intent.data.Store
 import com.poshith.intent.data.Usage
 import com.poshith.intent.guard.Break
+import com.poshith.intent.guard.BreakQuietService
 import com.poshith.intent.guard.Dnd
 import com.poshith.intent.guard.FocusGuardService
 import com.poshith.intent.guard.Launch
@@ -64,6 +65,7 @@ import com.poshith.intent.ui.lp
 import com.poshith.intent.ui.onText
 import com.poshith.intent.ui.paragraph
 import com.poshith.intent.ui.ripple
+import com.poshith.intent.ui.row
 import com.poshith.intent.ui.rounded
 import com.poshith.intent.ui.showKeyboard
 import com.poshith.intent.ui.space
@@ -104,6 +106,7 @@ class HomeActivity : BaseActivity() {
     private var shownCheckInFor = 0L
     private var resumed = false
     private var away = true // home was fully hidden (another app, screen off): settle in on return
+    private var reopenQuiet = false // came back from a switch the real break needed: show its sheet again
     private var quoteBox: LinearLayout? = null
     private var quoteText: TextView? = null
     private var quoteBy: TextView? = null
@@ -170,6 +173,10 @@ class HomeActivity : BaseActivity() {
         maybeCheckIn()
         ui.postDelayed({ if (resumed) maybeCheckIn() }, 500)
         if (away) { away = false; settle() }
+        if (reopenQuiet && breakScreen == null) {
+            reopenQuiet = false
+            ui.postDelayed({ if (resumed && !hasBackLayers() && breakScreen == null) focusSheet() }, 350)
+        }
     }
 
     override fun onPause() {
@@ -1247,25 +1254,47 @@ class HomeActivity : BaseActivity() {
         bChips += cc; bf.addView(cc)
         s.add(bf)
         s.add(custom)
+        // What makes it a real break: two one-time switches in Android's settings (after either, this
+        // sheet comes back by itself). Notification access also gives Do Not Disturb access, so the
+        // first is usually one switch, not two.
+        fun silenced() = BreakQuietService.hasAccess(this) && Dnd.hasAccess(this)
+        fun silence() { reopenQuiet = true; if (!BreakQuietService.hasAccess(this)) BreakQuietService.requestAccess(this) else Dnd.requestAccess(this) }
+        fun need(title: String, sub: String, ok: Boolean, action: () -> Unit) {
+            val r = row(title, sub, if (ok) "On" else "Turn on", if (ok) null else { _: View -> action() })
+            (r.findViewWithTag<TextView>("value"))?.setTextColor(if (ok) P.text3 else P.accent)
+            s.content.addView(r, lp())
+        }
+        val guard = Launch.isGuardOn(this)
+        need("No notifications at all", when {
+            silenced() -> "Calls still ring"
+            BreakQuietService.hasAccess(this) -> "Also allow “Do Not Disturb access”"
+            else -> "Allow “Notification access” once"
+        }, silenced()) { silence() }
+        need("No notification shade, no other apps", if (guard) "Focus Guard" else "Turn on Focus Guard once", guard) { s.dismiss(); reopenQuiet = true; guardSheet(this) }
         s.add(button("Start the break", Kind.PRIMARY) {
             hideKeyboard(this, custom)
-            Break.start(this, breakMin)
-            s.dismiss()
-            buildHome()
-            if (resumed) breakScreen?.start()
-        })
-        // Below the button: what makes it stricter. Each missing piece is one tap away; the break works without them, just less strictly.
-        if (!Launch.isGuardOn(this)) {
-            s.item("Keep apps closed", "Turn on Focus Guard. Without it, apps can still be opened from notifications or recents.", P.accent, keepOpen = true) { guardSheet(this) }
-        }
-        if (!com.poshith.intent.guard.BreakQuietService.hasAccess(this)) {
-            s.item("Hide every notification but calls", "Allow Intent “Notification access”. They come back after the break, nothing is lost.", P.accent, keepOpen = true) {
-                com.poshith.intent.guard.BreakQuietService.requestAccess(this)
+            val go = {
+                Break.start(this, breakMin)
+                s.dismiss()
+                buildHome()
+                if (resumed) breakScreen?.start()
             }
-        }
-        if (!Dnd.hasAccess(this)) {
-            s.item("Silence everything but calls", "Allow Intent “Do Not Disturb access”. Calls and alarms still ring.", P.accent, keepOpen = true) { Dnd.requestAccess(this) }
-        }
+            val quiet = silenced()
+            val guarded = Launch.isGuardOn(this)
+            if (quiet && guarded) go()
+            else {
+                // Honest about what a half-set-up break can't do, and one tap from fixing it.
+                val c = Sheet(this, "Not quite a real break yet", when {
+                    !quiet && !guarded -> "Right now, notifications still come in, and the notification shade and other apps stay open."
+                    !quiet -> "Right now, notifications still come in."
+                    else -> "Right now, the notification shade and other apps stay open."
+                })
+                if (!quiet) c.add(button("Silence notifications", Kind.PRIMARY) { c.dismiss(); silence() })
+                else c.add(button("Turn on Focus Guard", Kind.PRIMARY) { c.dismiss(); s.dismiss(); reopenQuiet = true; guardSheet(this) })
+                c.add(button("Start anyway", Kind.PLAIN) { c.dismiss(); go() })
+                c.show()
+            }
+        })
     }
 
     private fun focusTab(s: Sheet) {
