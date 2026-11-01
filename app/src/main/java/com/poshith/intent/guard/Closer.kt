@@ -3,6 +3,7 @@ package com.poshith.intent.guard
 import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.media.AudioAttributes
 import android.media.AudioFocusRequest
 import android.media.AudioManager
@@ -26,10 +27,19 @@ object Closer {
     /** Flags for any Intent screen that appears over another app, so that app doesn't go picture-in-picture. */
     const val OVER_APP = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_NO_USER_ACTION
 
-    /** Intent's home in front, quietly: the app behind it stops, nothing pops out. */
+    /** The home screen in front, quietly: the app behind it stops, nothing pops out. Intent's home
+     *  when it's the launcher (or none is chosen yet), otherwise the launcher you use. */
     fun toHome(ctx: Context) {
+        val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val launcher = try {
+            ctx.packageManager.resolveActivity(home, PackageManager.MATCH_DEFAULT_ONLY)?.activityInfo?.packageName
+        } catch (_: Exception) { null }
+        // "android" is the "open with" chooser: no launcher picked yet.
+        val i = if (launcher == null || launcher == ctx.packageName || launcher == "android")
+            Intent(ctx, HomeActivity::class.java).setAction(Intent.ACTION_MAIN)
+        else home.setPackage(launcher)
         try {
-            ctx.startActivity(Intent(ctx, HomeActivity::class.java).setAction(Intent.ACTION_MAIN).addFlags(OVER_APP))
+            ctx.startActivity(i.addFlags(OVER_APP))
         } catch (_: Exception) {
             Launch.goHome(ctx)
         }

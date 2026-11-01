@@ -693,6 +693,23 @@ class HomeActivity : BaseActivity() {
                 if (shorts > 0) row("Shorts swiped", shorts.toString(), warn = shorts >= 50)
                 if (reels > 0) row("Reels swiped", reels.toString(), warn = reels >= 50)
                 if (notNow > 0) row("Said “Not now”", "$notNow×")
+                // Today's Mind idea starts as a question; one you haven't guessed waits here too.
+                val lesson = com.poshith.intent.core.Lessons.forDay(System.currentTimeMillis() / 86_400_000L)
+                val guess = com.poshith.intent.core.Guesses.forLesson(lesson.id)
+                if (guess != null && lesson.id !in Store.lessonsRead) {
+                    body.addView(space(14))
+                    val r = dp(18).toFloat()
+                    val card = vbox().apply {
+                        background = ripple(rounded(P.surface2, r), r)
+                        setPadding(dp(18), dp(14), dp(18), dp(16))
+                        isClickable = true
+                        setOnClickListener { it.tick(); s.dismiss(); mindPanel().open() }
+                    }
+                    card.addView(text("TODAY'S QUESTION · ONE MINUTE", 11.5f, P.text3, Fonts.medium(this@HomeActivity)).apply { letterSpacing = 0.1f })
+                    card.addView(text(guess.question, 16.5f, P.text, Fonts.medium(this@HomeActivity)).apply { setLineSpacing(0f, 1.2f); setPadding(0, dp(6), 0, 0) })
+                    card.addView(text("Guess, then see what the research found", 14f, P.accent).apply { setPadding(0, dp(8), 0, 0) })
+                    body.addView(card, lp())
+                }
                 body.addView(space(8))
                 body.addView(button("Your week", Kind.PLAIN) { s.dismiss(); mindPanel().open() }, lp())
             }
@@ -1259,18 +1276,7 @@ class HomeActivity : BaseActivity() {
         // first is usually one switch, not two.
         fun silenced() = BreakQuietService.hasAccess(this) && Dnd.hasAccess(this)
         fun silence() { reopenQuiet = true; if (!BreakQuietService.hasAccess(this)) BreakQuietService.requestAccess(this) else Dnd.requestAccess(this) }
-        fun need(title: String, sub: String, ok: Boolean, action: () -> Unit) {
-            val r = row(title, sub, if (ok) "On" else "Turn on", if (ok) null else { _: View -> action() })
-            (r.findViewWithTag<TextView>("value"))?.setTextColor(if (ok) P.text3 else P.accent)
-            s.content.addView(r, lp())
-        }
-        val guard = Launch.isGuardOn(this)
-        need("No notifications at all", when {
-            silenced() -> "Calls still ring"
-            BreakQuietService.hasAccess(this) -> "Also allow “Do Not Disturb access”"
-            else -> "Allow “Notification access” once"
-        }, silenced()) { silence() }
-        need("No notification shade, no other apps", if (guard) "Focus Guard" else "Turn on Focus Guard once", guard) { s.dismiss(); reopenQuiet = true; guardSheet(this) }
+        fun guardOn() { reopenQuiet = true; guardSheet(this) }
         s.add(button("Start the break", Kind.PRIMARY) {
             hideKeyboard(this, custom)
             val go = {
@@ -1290,11 +1296,25 @@ class HomeActivity : BaseActivity() {
                     else -> "Right now, the notification shade and other apps stay open."
                 })
                 if (!quiet) c.add(button("Silence notifications", Kind.PRIMARY) { c.dismiss(); silence() })
-                else c.add(button("Turn on Focus Guard", Kind.PRIMARY) { c.dismiss(); s.dismiss(); reopenQuiet = true; guardSheet(this) })
+                else c.add(button("Turn on Focus Guard", Kind.PRIMARY) { c.dismiss(); s.dismiss(); guardOn() })
                 c.add(button("Start anyway", Kind.PLAIN) { c.dismiss(); go() })
                 c.show()
             }
         })
+        // Below the button (it stays in reach on small screens): what's set, or the one tap that's missing.
+        val quiet = silenced()
+        val guarded = Launch.isGuardOn(this)
+        if (quiet && guarded) {
+            s.add(paragraph("Notifications silenced and hidden, the shade kept closed. Calls still ring.", 13.5f, P.text3), 0)
+        } else {
+            fun need(title: String, sub: String, action: () -> Unit) {
+                val r = row(title, sub, "Turn on", { _: View -> action() })
+                (r.findViewWithTag<TextView>("value"))?.setTextColor(P.accent)
+                s.content.addView(r, lp())
+            }
+            if (!quiet) need("Silence every notification", if (BreakQuietService.hasAccess(this)) "Also allow “Do Not Disturb access”" else "Allow “Notification access” once. Calls still ring.") { silence() }
+            if (!guarded) need("Keep the shade and other apps closed", "Turn on Focus Guard once") { s.dismiss(); guardOn() }
+        }
     }
 
     private fun focusTab(s: Sheet) {

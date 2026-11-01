@@ -371,7 +371,7 @@ class GateActivity : BaseActivity() {
         Store.sessions { it.close(pkg) }
         val n = Stats.notNowToday()
         Store.flash = if (n == 1) "Not now. Nice." else "Not now. That's $n times today."
-        if (!fromLauncher) { Launch.goHome(this); com.poshith.intent.guard.Closer.silence(this) }
+        if (!fromLauncher) { com.poshith.intent.guard.Closer.toHome(this); com.poshith.intent.guard.Closer.silence(this) }
         finish()
         overridePendingTransition(0, android.R.anim.fade_out)
     }

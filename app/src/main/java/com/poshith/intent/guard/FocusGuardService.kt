@@ -162,7 +162,7 @@ class FocusGuardService : AccessibilityService() {
             // (a splash screen opened the real app over it), pause it again. If you just said "Not now"
             // to it, it doesn't get to ask twice: straight home instead.
             if (isApp(next) && Launch.decide(this, next) !is Decision.Open) {
-                if (justSaidNotNow(next)) performGlobalAction(GLOBAL_ACTION_HOME) else showGate(next)
+                if (justSaidNotNow(next)) Closer.toHome(this) else showGate(next)
             }
             return
         }
@@ -222,7 +222,7 @@ class FocusGuardService : AccessibilityService() {
                     scheduleExpiry(pkg)
                 }
             }
-            else -> if (justSaidNotNow(pkg)) performGlobalAction(GLOBAL_ACTION_HOME) else showGate(pkg)
+            else -> if (justSaidNotNow(pkg)) Closer.toHome(this) else showGate(pkg)
         }
     }
 
