@@ -152,10 +152,16 @@ fun EditText.onText(fn: (String) -> Unit) = addTextChangedListener(object : Text
  * Making an app EASIER to open waits a few seconds (Settings > Rule changes). Making it harder is
  * instant. This is the commitment-device idea from Allcott et al. (2022): decide while calm.
  */
-fun BaseActivity.confirmLoosen(title: String, message: String, confirmLabel: String = "Yes, change it", action: () -> Unit) {
+/**
+ * Making a rule looser waits a few seconds (you can still do it, just not on impulse). [onCancel] runs if
+ * you keep it as it is, so a switch or chip that already moved can show the real setting again.
+ */
+fun BaseActivity.confirmLoosen(title: String, message: String, confirmLabel: String = "Yes, change it",
+                               onCancel: (() -> Unit)? = null, action: () -> Unit) {
     val secs = Store.coolOffSec
     if (secs <= 0) { action(); return }
     val s = Sheet(this, title, message)
+    var confirmed = false
     val btn = button("Wait $secs s", Kind.QUIET) { }
     styleButton(btn, Kind.QUIET, enabled = false)
     val h = Handler(Looper.getMainLooper())
@@ -166,14 +172,14 @@ fun BaseActivity.confirmLoosen(title: String, message: String, confirmLabel: Str
             if (left <= 0) {
                 btn.text = confirmLabel
                 styleButton(btn, Kind.PRIMARY, enabled = true)
-                btn.setOnClickListener { it.tick(); s.dismiss(); action() }
+                btn.setOnClickListener { it.tick(); confirmed = true; s.dismiss(); action() }
             } else {
                 btn.text = "Wait $left s"
                 h.postDelayed(this, 1000)
             }
         }
     }
-    s.onDismiss = { h.removeCallbacks(tick) }
+    s.onDismiss = { h.removeCallbacks(tick); if (!confirmed) onCancel?.invoke() }
     s.add(paragraph("The pause is part of the rule you set. You can still change it, just not on impulse.", 14f, P.text3), 0)
     s.add(btn)
     s.add(button("Keep it as it is", Kind.PLAIN) { s.dismiss() })

@@ -126,6 +126,11 @@ class SettingsActivity : BaseActivity() {
 
     private fun add(v: View) = col.addView(v, lp())
 
+    /** confirmLoosen, and if you keep things as they are, the page shows the real setting again
+     *  (a switch or chip that already moved goes back). */
+    private fun loosen(title: String, message: String, confirmLabel: String = "Yes, change it", action: () -> Unit) =
+        confirmLoosen(title, message, confirmLabel, onCancel = { render() }, action = action)
+
     private fun chips(values: IntArray, current: Int, label: (Int) -> String, onPick: (Int) -> Unit): View {
         val f = Flow(this).apply { setPadding(dp(24), dp(4), dp(24), dp(10)) }
         val all = ArrayList<Chip>()
@@ -200,7 +205,7 @@ class SettingsActivity : BaseActivity() {
         add(row("Privacy", "No internet permission. Nothing leaves your phone.", null) { go("privacy") })
         add(row("About and research", null, null) { go("about") })
         add(row("Change home app", "Switch to another launcher any time", null) { Launch.homeSettings(this) })
-        add(row("Run setup again", null, null) { startActivity(Intent(this, OnboardingActivity::class.java)) })
+        add(row("Run setup again", null, null) { startActivity(Intent(this, OnboardingActivity::class.java).putExtra(OnboardingActivity.EXTRA_RESTART, true)) })
     }
 
     private fun ruleChangesSheet() {
@@ -208,7 +213,7 @@ class SettingsActivity : BaseActivity() {
         s.add(chips(intArrayOf(0, 10, 20, 30, 60), Store.coolOffSec, { if (it == 0) "Off" else "$it s" }) { v ->
             if (v < Store.coolOffSec) {
                 s.dismiss()
-                confirmLoosen("Shorten the wait?", "From ${Store.coolOffSec} s to ${if (v == 0) "none" else "$v s"}.") { Store.coolOffSec = v; render() }
+                loosen("Shorten the wait?", "From ${Store.coolOffSec} s to ${if (v == 0) "none" else "$v s"}.") { Store.coolOffSec = v; render() }
             } else { Store.coolOffSec = v; s.dismiss(); render() }
         }, 0)
         s.show()
@@ -310,7 +315,7 @@ class SettingsActivity : BaseActivity() {
             // (back to normal), or adding it here from a stricter one (Blocked to Essential, say).
             val easier = removed.filter { Mode.NORMAL.isLooserThan(mode) } +
                 added.filter { mode.isLooserThan(Store.rule(it).mode) }
-            if (easier.isNotEmpty()) confirmLoosen("Make ${names(easier.toSet(), 2)} easier to open?",
+            if (easier.isNotEmpty()) loosen("Make ${names(easier.toSet(), 2)} easier to open?",
                 "They'll open with fewer limits than now.") { apply() }
             else apply()
         }
@@ -339,11 +344,11 @@ class SettingsActivity : BaseActivity() {
         add(chips(com.poshith.intent.core.Limits.BUDGET_CHOICES, Store.budgetMin, { if (it == 0) "Off" else "$it min" }) { v ->
             val cur = Store.budgetMin
             val looser = cur > 0 && (v == 0 || v > cur)
-            if (looser) confirmLoosen("Allow more time?", if (v == 0) "Turns the daily budget off." else "From $cur to $v minutes a day.") { Store.budgetMin = v; render() }
+            if (looser) loosen("Allow more time?", if (v == 0) "Turns the daily budget off." else "From $cur to $v minutes a day.") { Store.budgetMin = v; render() }
             else { Store.budgetMin = v; render() }
         })
         add(toggleRow("A short rest after 3 sessions in 10 minutes", "Mindful apps wait 5 minutes, then open as usual", Store.restOn) { on ->
-            if (!on) confirmLoosen("Turn off the short rest?", "Sessions close together won't get a rest.") { Store.restOn = false; render() }
+            if (!on) loosen("Turn off the short rest?", "Sessions close together won't get a rest.") { Store.restOn = false; render() }
             else { Store.restOn = true; render() }
         })
         add(toggleRow("Ask how I feel", "Naming the feeling is where the habit loop breaks", Store.askFeeling) { Store.askFeeling = it })
@@ -372,7 +377,7 @@ class SettingsActivity : BaseActivity() {
             }
             render()
         }
-        if (looser) confirmLoosen("Make mindful apps easier to open?", "This loosens the rule for every mindful app.") { apply() } else apply()
+        if (looser) loosen("Make mindful apps easier to open?", "This loosens the rule for every mindful app.") { apply() } else apply()
     }
 
     fun suggestedPull(): Set<String> {
@@ -417,7 +422,7 @@ class SettingsActivity : BaseActivity() {
                 val picker = AppPicker(this@SettingsActivity, "Hide from search", "Selected apps won't appear when you search.", Store.hidden.toList(), byPackage = false) { sel ->
                     val unhiding = Store.hidden - sel.toSet()
                     fun apply() { Store.hidden = sel.toSet(); ov.close(); render() }
-                    if (unhiding.isNotEmpty()) confirmLoosen("Show these again?", "They'll appear in search again.") { apply() } else apply()
+                    if (unhiding.isNotEmpty()) loosen("Show these again?", "They'll appear in search again.") { apply() } else apply()
                 }
                 ov = Overlay(this@SettingsActivity, picker.build()).show()
             })
@@ -434,20 +439,20 @@ class SettingsActivity : BaseActivity() {
         add(sectionTitle("Morning quiet"))
         add(paragraph("Mindful apps rest for the first minutes after your first unlock of the morning, so your first thoughts are your own (Dr. Sahar Yousef's 30/15 rule).", 14.5f))
         add(chips(intArrayOf(0, 15, 30, 60), Store.morningQuietMin, { if (it == 0) "Off" else "$it min" }) { v ->
-            if (v < Store.morningQuietMin) confirmLoosen("Shorten morning quiet?", "From ${Store.morningQuietMin} to ${if (v == 0) "off" else "$v min"}.") { Store.morningQuietMin = v; render() }
+            if (v < Store.morningQuietMin) loosen("Shorten morning quiet?", "From ${Store.morningQuietMin} to ${if (v == 0) "off" else "$v min"}.") { Store.morningQuietMin = v; render() }
             else { Store.morningQuietMin = v; render() }
         })
         add(sectionTitle("Wind-down"))
         add(paragraph("At night, mindful apps rest. Screens late in the evening push sleep later (Chang et al., 2015). Alarms, calls and essentials still work.", 14.5f))
         add(toggleRow("Wind-down", null, Store.windDownOn) { on ->
-            if (!on) confirmLoosen("Turn off wind-down?", "Mindful apps will open at night again.") { Store.windDownOn = false; render() }
+            if (!on) loosen("Turn off wind-down?", "Mindful apps will open at night again.") { Store.windDownOn = false; render() }
             else { Store.windDownOn = true; render() }
         })
         if (Store.windDownOn) {
             add(row("Starts", null, timeLabel(Store.windDownStart)) { pickTime(Store.windDownStart) { Store.windDownStart = it; render() } })
             add(row("Ends", null, timeLabel(Store.windDownEnd)) { pickTime(Store.windDownEnd) { Store.windDownEnd = it; render() } })
             add(toggleRow("Strict", "Also pause normal apps, not just mindful ones", Store.windDownStrict) { on ->
-                if (!on) confirmLoosen("Make wind-down gentler?", "Normal apps will open at night.") { Store.windDownStrict = false; render() }
+                if (!on) loosen("Make wind-down gentler?", "Normal apps will open at night.") { Store.windDownStrict = false; render() }
                 else { Store.windDownStrict = true; render() }
             })
         }
@@ -549,14 +554,14 @@ class SettingsActivity : BaseActivity() {
             col.addView(card, lp().apply { leftMargin = dp(16); rightMargin = dp(16); topMargin = dp(8) })
         }
         add(row("Step in when I swipe", if (Store.reelsOn) null else "Paused: Shorts and Reels play as usual", if (Store.reelsOn) "On" else "Off") {
-            if (Store.reelsOn) confirmLoosen("Pause it?", "Shorts and Reels would play without stopping you.", "Pause it") { Store.reelsOn = false; render() }
+            if (Store.reelsOn) loosen("Pause it?", "Shorts and Reels would play without stopping you.", "Pause it") { Store.reelsOn = false; render() }
             else { Store.reelsOn = true; render() }
         })
         add(sectionTitle("After the first swipe"))
         add(paragraph("The first swipe always asks. If you choose to keep watching, how many before it asks again? “None” means the swipe always stops you.", 14.5f))
         fun label(v: Int) = if (v == 0) "None" else "$v"
         add(chips(intArrayOf(0, 5, 10, 20), Store.reelsAllow, { label(it) }) { v ->
-            if (v > Store.reelsAllow) confirmLoosen("Allow more?", "From ${label(Store.reelsAllow)} to $v before it asks again.") { Store.reelsAllow = v; render() }
+            if (v > Store.reelsAllow) loosen("Allow more?", "From ${label(Store.reelsAllow)} to $v before it asks again.") { Store.reelsAllow = v; render() }
             else { Store.reelsAllow = v; render() }
         })
         add(sectionTitle("Today"))
@@ -650,7 +655,8 @@ class SettingsActivity : BaseActivity() {
             add(dim)
         }
         add(toggleRow("Status bar on the home screen", "Off for a calmer screen. Swipe down still opens notifications.", Store.statusBar) { Store.statusBar = it })
-        add(toggleRow("Quotes on the home screen", "A line worth stopping for, new every 30 seconds. Tap it for another.", Store.showQuote) { Store.showQuote = it })
+        add(toggleRow("Quotes on the home screen", "A line worth stopping for. Tap it for another.", Store.showQuote) { Store.showQuote = it; render() })
+        if (Store.showQuote) add(toggleRow("One quote a day", "Off: a new one every 30 seconds. On: one line for the whole day, calmer to come back to.", Store.quoteDaily) { Store.quoteDaily = it })
         add(sectionTitle("Theme"))
         val themes = listOf("system" to "Follow system", "dark" to "Dark", "light" to "Light")
         val tf = Flow(this).apply { setPadding(dp(24), dp(4), dp(24), dp(10)) }
@@ -703,7 +709,7 @@ class SettingsActivity : BaseActivity() {
         })
         col.addView(divider().apply { (layoutParams as LinearLayout.LayoutParams).setMargins(dp(24), dp(18), dp(24), dp(6)) })
         add(row("Erase everything", "Deletes all of Intent's data on this phone and starts setup again", null) {
-            confirmLoosen("Erase everything?", "Your rules, home apps, plans and counters will be deleted. This removes every pause too, so it waits like any other loosening.", "Erase") {
+            loosen("Erase everything?", "Your rules, home apps, plans and counters will be deleted. This removes every pause too, so it waits like any other loosening.", "Erase") {
                 for (pkg in Store.sessions { it.activePackages(android.os.SystemClock.elapsedRealtime()) }) Reminder.cancel(this, pkg)
                 com.poshith.intent.guard.Break.end(this) // gives Do Not Disturb back if a break had it
                 Store.eraseAll()

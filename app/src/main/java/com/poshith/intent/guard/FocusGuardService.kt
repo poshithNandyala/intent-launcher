@@ -281,6 +281,8 @@ class FocusGuardService : AccessibilityService() {
     }
 
     private fun scheduleExpiry(pkg: String) {
+        // Focus Guard is timing it now: the backup reminder (scheduled if it wasn't running) isn't needed.
+        Reminder.cancel(this, pkg)
         val rem = Store.sessions { it.remainingMs(pkg, SystemClock.elapsedRealtime()) }
         timing = pkg
         h.removeCallbacks(expireRunnable)
@@ -302,6 +304,8 @@ class FocusGuardService : AccessibilityService() {
     private fun onExpire() {
         val pkg = timing ?: return
         if (current != pkg) return
+        // No session any more (its rule changed, or it was ended elsewhere): nothing to end, nothing to close.
+        if (Store.sessions { it[pkg] } == null) { timing = null; h.removeCallbacks(warnRunnable); return }
         // On a call in that app (WhatsApp, Meet...): time's up waits until the call is over.
         if (Calls.active(this)) { h.removeCallbacks(expireRunnable); h.postDelayed(expireRunnable, 15_000); return }
         val now = SystemClock.elapsedRealtime()

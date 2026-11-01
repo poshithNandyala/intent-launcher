@@ -275,6 +275,21 @@ object Launch {
 
     fun guardHealth(ctx: Context) = health(switchedOn(ctx, FocusGuardService::class.java), FocusGuardService.running)
     fun reelsHealth(ctx: Context) = health(switchedOn(ctx, ReelsGuardService::class.java), ReelsGuardService.running)
+    /** A recommended switch that's off: its name, and how to turn it on. */
+    class Missing(val name: String, val turnOn: (Activity) -> Unit)
+
+    /** The recommended switches that are off (or stopped). Setup and the home screen push until they're on. */
+    fun missingProtections(ctx: Context): List<Missing> {
+        val out = ArrayList<Missing>()
+        if (guardHealth(ctx) != Health.ON) out += Missing("Focus Guard") { a -> com.poshith.intent.guardSheet(a as com.poshith.intent.ui.BaseActivity) }
+        if (reelsHealth(ctx) != Health.ON) out += Missing("Shorts & Reels guard") { a -> com.poshith.intent.reelsSheet(a as com.poshith.intent.ui.BaseActivity) }
+        if (!(BreakQuietService.hasAccess(ctx) && Dnd.hasAccess(ctx))) out += Missing("Notification access") { a ->
+            if (!BreakQuietService.hasAccess(a)) BreakQuietService.requestAccess(a) else Dnd.requestAccess(a)
+        }
+        if (!com.poshith.intent.data.Usage.hasAccess(ctx)) out += Missing("Usage access") { a -> usageSettings(a) }
+        return out
+    }
+
     /** The real break's notification side: Notification access (it also brings Do Not Disturb access). */
     fun quietHealth(ctx: Context): Health {
         BreakQuietService.reconnect(ctx)

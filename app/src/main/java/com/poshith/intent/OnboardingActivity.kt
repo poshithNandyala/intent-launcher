@@ -44,6 +44,11 @@ import com.poshith.intent.ui.vflex
 /** First run, about two minutes: what Intent is, your essentials, the apps that pull you, a plan, and permissions. */
 class OnboardingActivity : BaseActivity() {
 
+    companion object {
+        /** Start over from the first page ("Run setup again" in Settings). */
+        const val EXTRA_RESTART = "restart"
+    }
+
     private var step = 0
     private val steps = listOf("welcome", "essentials", "pull", "plan", "protect", "quiet", "done")
     private var essentials: List<String> = emptyList()
@@ -57,7 +62,15 @@ class OnboardingActivity : BaseActivity() {
         onBars { b -> frame.setPadding(b.left, b.top + dp(18), b.right, b.bottomOrIme + dp(14)) }
         Apps.onChange(appsListener)
         Apps.refresh(this)
+        // Pick up on the page you were on: Android can restart setup (choosing a home app does on some phones).
+        step = if (intent.getBooleanExtra(EXTRA_RESTART, false)) 0 else Store.setupStep.coerceIn(0, steps.size - 1)
         show()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_RESTART, false)) { step = 0; show() }
     }
 
     private val appsListener: () -> Unit = { if (steps[step] in setOf("essentials", "pull") && essentials.isEmpty() && pull.isEmpty()) show() }
@@ -74,12 +87,16 @@ class OnboardingActivity : BaseActivity() {
     }
 
     override fun onBackRoot() {
-        if (step > 0) { step--; show() } else finish()
+        if (step > 0) { step--; show(); return }
+        // Leaving setup on its first page: back to the home app you use now. (If that's already Intent,
+        // there's nothing to go back to until setup is done.)
+        if (!Launch.isDefaultHome(this)) Launch.goHome(this)
     }
 
     private fun next() { if (step < steps.size - 1) { step++; show() } }
 
     private fun show() {
+        Store.setupStep = step
         frame.removeAllViews()
         val v: View = when (steps[step]) {
             "welcome" -> welcome()
@@ -194,6 +211,8 @@ class OnboardingActivity : BaseActivity() {
         return root
     }
 
+    private val INSTAGRAM = setOf("com.instagram.android", "com.instagram.lite")
+
     private fun suggestedPull(): Set<String> {
         val out = LinkedHashSet<String>()
         for (a in Apps.list) if (a.pkg in Catalog.PULL ||
@@ -203,7 +222,8 @@ class OnboardingActivity : BaseActivity() {
 
     private fun pullPage(): View {
         val sug = suggestedPull()
-        if (pull.isEmpty()) pull = (Store.packagesWithMode(Mode.MINDFUL).ifEmpty { sug.filter { it in Catalog.PULL } .toSet() }).toList()
+        // Preselected: Instagram only. Every other suggestion is listed for you to choose.
+        if (pull.isEmpty()) pull = (Store.packagesWithMode(Mode.MINDFUL).ifEmpty { sug.filter { it in INSTAGRAM }.toSet() }).toList()
         val picker = AppPicker(this, "Which apps pull you in?",
             "Feeds, short videos, endless browsing. They'll get a short pause and the minutes you choose. You can still open them, on purpose.",
             pull, byPackage = true, suggested = sug, showDone = false,
@@ -215,7 +235,9 @@ class OnboardingActivity : BaseActivity() {
         val actions = vbox().apply { setPadding(dp(24), dp(10), dp(24), 0) }
         actions.addView(button("Next", Kind.PRIMARY) {
             pull = picker.selected.toList()
-            for (p in pull) Store.setRule(p, Store.mindfulDefaults(Store.rule(p)))
+            for (p in pull) if (Store.rule(p).mode != Mode.MINDFUL) Store.setRule(p, Store.mindfulDefaults(Store.rule(p)))
+            // Unticked here (running setup again): no longer mindful.
+            for (p in Store.packagesWithMode(Mode.MINDFUL)) if (p !in pull) Store.setMode(p, Mode.NORMAL)
             next()
         }, lp())
         root.addView(actions, lp())
@@ -246,33 +268,57 @@ class OnboardingActivity : BaseActivity() {
             body, "Next", { next() }, "Skip", { next() })
     }
 
+    /**
+     * The switches that make Intent work. All optional, but this page pushes for every one: what each
+     * does in one line, how many are on, and one big button that turns on the next.
+     */
     private fun protectPage(): View {
-        val body = vbox().apply { setPadding(dp(16), dp(8), dp(16), 0) }
-        fun card(title: String, sub: String, ok: Boolean, action: String, onClick: () -> Unit, required: Boolean = false) {
+        class Switch(val title: String, val sub: String, val on: Boolean, val action: String, val needed: Boolean = false, val turnOn: () -> Unit)
+        val list = ArrayList<Switch>()
+        list += Switch("Make Intent your home screen", "So your phone opens to your essentials, not to an icon grid built to pull you in.",
+            Launch.isDefaultHome(this), "Set Intent as home", needed = true) { Launch.requestHome(this) }
+        list += Switch("Focus Guard", "Pauses your pull apps even from a notification or recents, and closes them when your minutes are up. It sees only which app is in front.",
+            Launch.guardHealth(this) == Launch.Health.ON, "Turn on Focus Guard") { guardSheet(this) }
+        list += Switch("Shorts & Reels guard", "Stops the endless swipe: the Short you open plays, the next swipe gets a pause and a big button to close the app.",
+            Launch.reelsHealth(this) == Launch.Health.ON, "Turn on the Shorts & Reels guard") { reelsSheet(this) }
+        list += Switch("No notifications in a real break", "Notification access: during a break only calls get through, and everything else waits for you.",
+            com.poshith.intent.guard.BreakQuietService.hasAccess(this) && com.poshith.intent.guard.Dnd.hasAccess(this), "Allow notification access") {
+            if (!com.poshith.intent.guard.BreakQuietService.hasAccess(this)) com.poshith.intent.guard.BreakQuietService.requestAccess(this)
+            else com.poshith.intent.guard.Dnd.requestAccess(this)
+        }
+        list += Switch("Usage access", "Honest numbers: today's screen time, unlocks and minutes in pull apps, counted on the phone.",
+            Usage.hasAccess(this), "Allow usage access") { Launch.usageSettings(this) }
+        if (Build.VERSION.SDK_INT >= 33) list += Switch("Reminders", "A “time's up” note if Focus Guard ever isn't running.",
+            Reminder.canNotify(this), "Allow reminders") { requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7) }
+
+        val body = vbox().apply { setPadding(dp(16), dp(4), dp(16), 0) }
+        val onCount = list.count { it.on }
+        // How far along: a bar and a count, so "almost there" pulls you to finish.
+        val prog = hbox(Gravity.CENTER_VERTICAL).apply { setPadding(dp(8), dp(6), dp(8), dp(14)) }
+        val bar = hbox().apply { background = rounded(P.surface2, dp(3).toFloat()); clipToOutline = true }
+        if (onCount > 0) bar.addView(View(this).apply { background = rounded(P.accent, dp(3).toFloat()) }, LinearLayout.LayoutParams(0, dp(6), onCount.toFloat()))
+        if (onCount < list.size) bar.addView(View(this), LinearLayout.LayoutParams(0, dp(6), (list.size - onCount).toFloat()))
+        prog.addView(bar, LinearLayout.LayoutParams(0, dp(6), 1f))
+        prog.addView(text("$onCount of ${list.size} on", 13.5f, if (onCount == list.size) P.accent else P.text2, Fonts.medium(this)).apply { setPadding(dp(12), 0, 0, 0) })
+        body.addView(prog, lp())
+        for (sw in list) {
             val c = vbox().apply {
-                setPadding(dp(20), dp(16), dp(20), dp(16))
+                setPadding(dp(20), dp(14), dp(20), dp(14))
                 background = rounded(P.surface, dp(18).toFloat())
             }
-            val head = hbox()
-            head.addView(text(title, 17f, P.text, Fonts.medium(this)), lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            head.addView(text(if (ok) "✓ On" else if (required) "Needed" else "Optional", 13f, if (ok) P.accent else P.text3, Fonts.medium(this)))
+            val head = hbox(Gravity.CENTER_VERTICAL)
+            head.addView(text(sw.title, 16.5f, P.text, Fonts.medium(this)), lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            head.addView(text(if (sw.on) "✓ On" else if (sw.needed) "Needed" else "Recommended", 12.5f,
+                if (sw.on) P.accent else if (sw.needed) P.warn else P.text2, Fonts.medium(this)))
             c.addView(head, lp())
-            c.addView(text(sub, 14.5f, P.text2).apply { setLineSpacing(0f, 1.22f); setPadding(0, dp(6), 0, if (ok) 0 else dp(12)) }, lp())
-            if (!ok) c.addView(button(action, if (required) Kind.PRIMARY else Kind.QUIET) { onClick() }, lp(ViewGroup.LayoutParams.WRAP_CONTENT))
-            body.addView(c, lp().apply { bottomMargin = dp(12) })
+            c.addView(text(sw.sub, 14f, P.text2).apply { setLineSpacing(0f, 1.22f); setPadding(0, dp(5), 0, if (sw.on) 0 else dp(10)) }, lp())
+            if (!sw.on) c.addView(button("Turn on", Kind.QUIET) { sw.turnOn() }, lp(ViewGroup.LayoutParams.WRAP_CONTENT))
+            body.addView(c, lp().apply { bottomMargin = dp(10) })
         }
-        card("Make Intent your home screen", "So your phone opens to your essentials, not to an icon grid built to pull you in.",
-            Launch.isDefaultHome(this), "Set as home", { Launch.requestHome(this) }, required = true)
-        card("Turn on Focus Guard", "Pauses mindful apps even when you open them from a notification, and ends sessions on time. It sees only which app is in front, never your screen.",
-            Launch.isGuardOn(this), "Turn on", { guardSheet(this) })
-        card("Pause the Shorts and Reels swipe", "The one you open plays. The first swipe to another gets a pause, with today's count and a big button to close the app. It looks only at YouTube and Instagram, never at text.",
-            com.poshith.intent.guard.ReelsGuardService.isOn(this), "Turn on", { reelsSheet(this) })
-        card("Allow usage access", "Shows honest numbers, like today's unlocks and minutes in mindful apps, computed on the phone.",
-            Usage.hasAccess(this), "Allow", { Launch.usageSettings(this) })
-        if (Build.VERSION.SDK_INT >= 33) card("Allow reminders", "Only to say “time's up” when Focus Guard is off.",
-            Reminder.canNotify(this), "Allow", { requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7) })
-        return page("Make it stick", "Each one is your choice. Intent works with whatever you allow, and says honestly what it can and can't do.",
-            body, "Next", { next() })
+        val nextOff = list.firstOrNull { !it.on }
+        return if (nextOff == null) page("All on. Intent can do its job.", "You can turn any of these off later in Settings › Protection and permissions.", body, "Next", { next() })
+        else page("Turn on your protection", "Intent works best with every one of these on. Each is one switch in Android's settings, and comes back here.",
+            body, nextOff.action, { nextOff.turnOn() }, "Skip for now", { next() })
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
@@ -322,6 +368,7 @@ class OnboardingActivity : BaseActivity() {
         val actions = vbox().apply { setPadding(dp(24), 0, dp(24), 0) }
         actions.addView(button("Start using Intent", Kind.PRIMARY) {
             Store.onboarded = true
+            Store.setupStep = 0
             if (Launch.isDefaultHome(this) || !Launch.requestHome(this, 42)) finish()
         }, lp())
         return pinned(content, actions)

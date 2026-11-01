@@ -47,7 +47,11 @@ object Stats {
 
     fun pauseShown(pkg: String) = bump(pkg, "pauses", appIndex = 0)
     fun notNow(pkg: String) = bump(pkg, "notNow", appIndex = 1)
-    fun sessionStarted(pkg: String, minutes: Int) { bump(pkg, "sessions", appIndex = 2); bump(null, "planned", minutes) }
+    /** A session started. Its minutes count as planned mindful time (the daily budget, Your week) only if [mindful]. */
+    fun sessionStarted(pkg: String, minutes: Int, mindful: Boolean = true) {
+        bump(pkg, "sessions", appIndex = 2)
+        if (mindful) bump(null, "planned", minutes)
+    }
     fun justChecking() = bump(null, "justChecking")
     /** One more swipe through YouTube Shorts or Instagram Reels (counted only with the Shorts & Reels guard on). */
     fun shortVideo(feed: com.poshith.intent.core.Feed) = bump(null, if (feed == com.poshith.intent.core.Feed.SHORTS) "shorts" else "reels")

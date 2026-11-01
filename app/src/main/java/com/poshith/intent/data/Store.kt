@@ -40,6 +40,10 @@ object Store {
 
     // ------------------------------------------------------------------ setup and appearance
     var onboarded: Boolean get() = bool("onboarded", false); set(v) = putB("onboarded", v)
+    /** The setup page you're on, so setup picks up there if Android restarts it (choosing a home app can). */
+    var setupStep: Int get() = int("setup_step", 0); set(v) = putI("setup_step", v)
+    /** "Remind me next week" on the home screen's "turn on your protection" line. */
+    var protectNudgeAfter: Long get() = long("protect_nudge_after", 0L); set(v) = putL("protect_nudge_after", v)
     var installDay: String get() = str("install_day"); set(v) = put("install_day", v)
     /** "system", "dark" or "light". */
     var theme: String get() = str("theme", "system"); set(v) = put("theme", v)
@@ -54,6 +58,8 @@ object Store {
     var checkIn: Boolean get() = bool("check_in", true); set(v) = putB("check_in", v)
     /** One quote a day on the home screen. */
     var showQuote: Boolean get() = bool("show_quote", true); set(v) = putB("show_quote", v)
+    /** The home quote stays all day instead of changing every 30 seconds. */
+    var quoteDaily: Boolean get() = bool("quote_daily", false); set(v) = putB("quote_daily", v)
     /** Shorts and Reels: step in when you start swiping (needs the "Intent · Shorts & Reels" service). */
     var reelsOn: Boolean get() = bool("reels_on", true); set(v) = putB("reels_on", v)
     /** After "watch more", how many swipes before Intent asks again. 0: the swipe always stops you. */
@@ -128,8 +134,9 @@ object Store {
     }
 
     fun setRule(pkg: String, r: Rule) {
-        // A stricter rule applies now: a session (or one-time unlock) from the looser rule ends.
-        if (rule(pkg).mode.isLooserThan(r.mode)) sessions { it.close(pkg) }
+        // A new mode applies now: a session (or one-time unlock) from the old one ends. Stricter, so the
+        // new block holds at once; looser (Essential, say), so no old timer closes the app later.
+        if (rule(pkg).mode != r.mode) sessions { it.close(pkg) }
         val all = jsonObj(str("rules"))
         if (r.mode == Mode.NORMAL && r.dailyOpenLimit == 0) all.remove(pkg)
         else all.put(pkg, JSONObject().put("m", r.mode.name).put("p", r.pauseSec).put("s", r.sessionMin)

@@ -91,9 +91,20 @@ record launch
 # Setup
 tap "Begin";              record essentials
 tap "Next";               record pull
+tap "YouTube"             # only Instagram comes ticked; this test uses YouTube as the pull app
 tap "Next";               record plan
+# The home screen coming forward mid-setup (choosing Intent as home does that), and Intent restarting:
+# setup must come back on the same page, not from the start.
+adb shell am start -W -n $PKG/.HomeActivity > /dev/null 2>&1
+record setup-after-home
+expect_text "When you feel the pull" setup-after-home
+adb shell am force-stop $PKG; sleep 1
+adb shell am start -W -n $PKG/.HomeActivity > /dev/null 2>&1
+record setup-after-restart
+expect_text "When you feel the pull" setup-after-restart
 tap "Next";               record protect
-tap "Next";               record quiet
+expect_text "Turn on your protection" protect
+tap "Skip for now";       record quiet
 tap "Next";               record done
 tap "Start using Intent"; record home-role
 adb shell input keyevent KEYCODE_BACK
@@ -202,6 +213,7 @@ tap "Start the break"
 tap "Start anyway"          # only if a switch is missing (it shouldn't be)
 record break-screen
 expect_text "Be here." break-screen
+expect_text "min left" break-screen
 adb shell settings get global zen_mode > "$OUT/break-zen.txt" 2>&1   # 1 = Do Not Disturb, priority only
 # A notification from another app during the break: expected nowhere (not on screen, not in the list).
 adb shell cmd notification post -S bigtext -t "Sale ends tonight" smoke "Tap to see the deals" > /dev/null 2>&1

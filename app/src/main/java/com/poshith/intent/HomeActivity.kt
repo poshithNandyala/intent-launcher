@@ -113,11 +113,17 @@ class HomeActivity : BaseActivity() {
     private var quoteNow = com.poshith.intent.core.Quotes.all.first()
     private val quoteTicker = object : Runnable {
         override fun run() {
-            val now = System.currentTimeMillis()
-            showQuote(com.poshith.intent.core.Quotes.forMoment(now, QUOTE_MS), animate = true)
-            ui.postDelayed(this, QUOTE_MS - now % QUOTE_MS + 50)
+            showQuote(quoteForNow(), animate = true)
+            ui.postDelayed(this, untilNextQuote())
         }
     }
+
+    /** How often the home quote changes: every 30 seconds, or once a day (Settings). */
+    private fun quoteEvery(): Long = if (Store.quoteDaily) 86_400_000L else QUOTE_MS
+    /** Local time, so "once a day" turns over at midnight where you are. */
+    private fun quoteClock(): Long { val now = System.currentTimeMillis(); return now + java.util.TimeZone.getDefault().getOffset(now) }
+    private fun quoteForNow() = com.poshith.intent.core.Quotes.forMoment(quoteClock(), quoteEvery())
+    private fun untilNextQuote(): Long = quoteEvery() - quoteClock() % quoteEvery() + 50
     private var layoutSig = ""
     private val barsListener: (com.poshith.intent.ui.Bars) -> Unit = { b ->
         if (::page.isInitialized) page.setPadding(dp(30) + b.left, b.top + dp(34), dp(30) + b.right, b.bottom + dp(6))
@@ -150,12 +156,17 @@ class HomeActivity : BaseActivity() {
         Apps.onChange(appsListener)
         Store.listen(prefsListener)
         Apps.refresh(this)
-        if (!Store.onboarded) startActivity(Intent(this, OnboardingActivity::class.java))
     }
 
     override fun onResume() {
         super.onResume()
         if (recreating) return // the theme changed in Settings: BaseActivity is redrawing this screen
+        // Setup not finished: back to it, on the page you were on. It lives in its own task, so the home
+        // screen coming forward (choosing Intent as your home app does that) doesn't wipe it.
+        if (!Store.onboarded) {
+            startActivity(Intent(this, OnboardingActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return
+        }
         resumed = true
         Break.checkEnded(this)
         if (layoutSig != signature()) buildHome()
@@ -165,10 +176,9 @@ class HomeActivity : BaseActivity() {
         IntentApp.onUnlock(unlockListener)
         ui.removeCallbacks(ticker); ui.postDelayed(ticker, 20_000)
         if (quoteText != null) {
-            // Back home: the line for this moment, then a new one every 30 seconds.
-            val now = System.currentTimeMillis()
-            showQuote(com.poshith.intent.core.Quotes.forMoment(now, QUOTE_MS), animate = false)
-            ui.removeCallbacks(quoteTicker); ui.postDelayed(quoteTicker, QUOTE_MS - now % QUOTE_MS + 50)
+            // Back home: the line for this moment, then a new one every 30 seconds (or tomorrow).
+            showQuote(quoteForNow(), animate = false)
+            ui.removeCallbacks(quoteTicker); ui.postDelayed(quoteTicker, untilNextQuote())
         }
         maybeCheckIn()
         ui.postDelayed({ if (resumed) maybeCheckIn() }, 500)
@@ -396,7 +406,7 @@ class HomeActivity : BaseActivity() {
                 setOnClickListener {
                     it.tick()
                     showQuote(com.poshith.intent.core.Quotes.next(quoteNow), animate = true)
-                    ui.removeCallbacks(quoteTicker); ui.postDelayed(quoteTicker, QUOTE_MS)
+                    ui.removeCallbacks(quoteTicker); ui.postDelayed(quoteTicker, if (Store.quoteDaily) untilNextQuote() else QUOTE_MS)
                 }
                 addView(quote, lp()); addView(by, lp())
             }
@@ -405,7 +415,7 @@ class HomeActivity : BaseActivity() {
             page.addView(box, lp().apply { topMargin = dp(if (onWall) 18 else 24); leftMargin = -bleed; rightMargin = -bleed })
             page.clipToPadding = false
             quoteBox = box; quoteText = quote; quoteBy = by
-            showQuote(com.poshith.intent.core.Quotes.forMoment(System.currentTimeMillis(), QUOTE_MS), animate = false)
+            showQuote(quoteForNow(), animate = false)
         }
 
         // Everything below the clock sits at the bottom, near your thumb. It only scrolls if it can't
@@ -627,10 +637,26 @@ class HomeActivity : BaseActivity() {
             Store.morningUntil > now -> "Morning quiet until ${tf.format(Date(Store.morningUntil))}"
             Store.windDown?.contains(Store.minuteOfDay(now)) == true ->
                 "Wind-down until ${tf.format(Date(Store.windDown!!.endsAfter(now)))}"
+            // Nothing else to say: push for the protections that are still off (until they're on, or
+            // "remind me next week").
+            now >= Store.protectNudgeAfter -> Launch.missingProtections(this).let { m ->
+                when (m.size) { 0 -> null; 1 -> "Turn on ${m[0].name}"; else -> "${m.size} protections off · turn them on" }
+            }
             else -> null
         }
         status.visibility = if (s == null) View.GONE else View.VISIBLE
         status.text = s ?: ""
+    }
+
+    /** The protections that are off, one tap each, and a way to be reminded later. */
+    private fun protectSheet(missing: List<Launch.Missing>) {
+        val s = Sheet(this, "Turn on your protection", "Intent works best with each of these on. One switch each in Android's settings.")
+        for (m in missing) s.item(m.name, null, P.accent, keepOpen = false) { m.turnOn(this) }
+        s.add(button("Remind me next week", Kind.PLAIN) {
+            Store.protectNudgeAfter = System.currentTimeMillis() + 7 * 86_400_000L
+            s.dismiss(); renderStatus()
+        })
+        s.show()
     }
 
     private fun renderStats() {
@@ -1199,6 +1225,10 @@ class HomeActivity : BaseActivity() {
                 s.add(HoldButton(this, "Hold to end it for today", 2500) { Store.morningUntil = 0; s.dismiss(); renderStatus() })
                 s.show()
             }
+            Store.windDown?.contains(Store.minuteOfDay(now)) != true -> {
+                val missing = Launch.missingProtections(this)
+                if (missing.isNotEmpty()) protectSheet(missing)
+            }
             else -> {
                 val s = Sheet(this, "Wind-down", "Mindful apps rest until morning. Screens in the last hour push sleep later. Change the hours in Settings.")
                 s.item("Wind-down settings") { openSettings("focus") }
@@ -1247,7 +1277,7 @@ class HomeActivity : BaseActivity() {
     }
 
     private fun breakTab(s: Sheet) {
-        s.add(paragraph("Only calls get through. Every other app and every notification waits, and there's no timer to watch: the phone tells you when it's over.", 15f, P.text2), 0)
+        s.add(paragraph("Only calls get through. Every other app and every notification waits. The screen shows how long is left, and the phone tells you when it's over.", 15f, P.text2), 0)
         var breakMin = Store.breakLength
         val presets = intArrayOf(15, 30, 45, 60, 90)
         val bf = Flow(this)
@@ -1288,7 +1318,7 @@ class HomeActivity : BaseActivity() {
                 if (resumed) breakScreen?.start()
             }
             val quiet = silenced()
-            val guarded = Launch.isGuardOn(this)
+            val guarded = (Launch.guardHealth(this) == Launch.Health.ON)
             if (quiet && guarded) go()
             else {
                 // Honest about what a half-set-up break can't do, and one tap from fixing it.
@@ -1305,7 +1335,7 @@ class HomeActivity : BaseActivity() {
         })
         // Below the button (it stays in reach on small screens): what's set, or the one tap that's missing.
         val quiet = silenced()
-        val guarded = Launch.isGuardOn(this)
+        val guarded = (Launch.guardHealth(this) == Launch.Health.ON)
         if (quiet && guarded) {
             s.add(paragraph("Notifications silenced and hidden, the shade kept closed. Calls still ring.", 13.5f, P.text3), 0)
         } else {

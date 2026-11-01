@@ -20,7 +20,8 @@ import kotlin.math.cos
 import kotlin.math.min
 
 /**
- * The real-break screen, shown instead of the home screen: lights down, no timer, and a way to call.
+ * The real-break screen, shown instead of the home screen: lights down, the time left in plain words
+ * (hours and minutes, no ticking seconds to watch), and a way to call.
  * Nothing else to tap, nothing to scroll. Always dark, whatever the theme: a break is lights-out.
  *
  * Layout: the breathing circle gets only the height left above the quote and the buttons and sizes
@@ -37,6 +38,12 @@ class BreakScreen(private val a: BaseActivity, private val onOver: () -> Unit) {
     }
     private val ring = PulseRing(a, k.accent)
     private val col = a.vbox(Gravity.CENTER_HORIZONTAL)
+    /** "1 h 20 min left": changes once a minute, so there's nothing to watch. */
+    private val left = a.text("", 16f, k.text2, Fonts.medium(a)).apply {
+        gravity = Gravity.CENTER; setPadding(0, a.dp(12), 0, 0)
+        breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
+    }
+    private var shownMin = -1
     private val face = Face()
     private lateinit var barsL: (Bars) -> Unit
     private val h = Handler(Looper.getMainLooper())
@@ -74,10 +81,7 @@ class BreakScreen(private val a: BaseActivity, private val onOver: () -> Unit) {
         face.addView(ring, FrameLayout.LayoutParams(a.dp(296), a.dp(296), Gravity.CENTER))
         col.addView(a.text("REAL BREAK", 12.5f, k.text3, Fonts.medium(a)).apply { letterSpacing = 0.16f; gravity = Gravity.CENTER }, lp())
         col.addView(words, lp().apply { topMargin = a.dp(12) })
-        col.addView(a.text("The phone will tell you when it's over.", 14f, k.text3).apply {
-            gravity = Gravity.CENTER; setPadding(0, a.dp(10), 0, 0)
-            breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
-        }, lp())
+        col.addView(left, lp())
         face.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
         page.addView(face, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
 
@@ -124,9 +128,21 @@ class BreakScreen(private val a: BaseActivity, private val onOver: () -> Unit) {
 
     /** False once the break is over. */
     private fun update(): Boolean {
-        val left = Store.focusUntil - System.currentTimeMillis()
-        if (!Store.breakActive() || left <= 0) { stop(); onOver(); return false }
+        val ms = Store.focusUntil - System.currentTimeMillis()
+        if (!Store.breakActive() || ms <= 0) { stop(); onOver(); return false }
+        val min = ((ms + 59_999) / 60_000).toInt() // rounded up: "1 min left" until it's over
+        if (min != shownMin) { shownMin = min; left.text = leftLabel(min) }
         return true
+    }
+
+    private fun leftLabel(min: Int): String {
+        val h = min / 60
+        val m = min % 60
+        return when {
+            h == 0 -> "$m min left"
+            m == 0 -> "$h h left"
+            else -> "$h h $m min left"
+        }
     }
 
     companion object {

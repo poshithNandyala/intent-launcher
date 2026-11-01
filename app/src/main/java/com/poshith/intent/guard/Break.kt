@@ -12,7 +12,7 @@ import com.poshith.intent.data.Store
 
 /**
  * A real break: only calls get through. Intent shows a dark, quiet screen instead of the home screen
- * (no timer to watch), Focus Guard keeps every other app and the notification shade closed,
+ * (just the time left, in hours and minutes), Focus Guard keeps every other app and the notification shade closed,
  * "Do Not Disturb access" keeps every sound but calls and alarms off, and "Notification access" sets
  * every notification but calls aside until the break is over. When it ends, Do Not Disturb goes back
  * exactly as it was.
@@ -72,7 +72,7 @@ class BreakReceiver : BroadcastReceiver() {
         if (!Store.breakActive()) {
             Dnd.end(context)
             Store.flash = "Break done. Welcome back."
-            // There's no timer on screen, so the phone says when it's over (after Do Not Disturb is off).
+            // The phone says when it's over (after Do Not Disturb is off), so you can put it away and forget it.
             if (Reminder.canNotify(context)) try {
                 Reminder.createChannel(context)
                 val open = android.app.PendingIntent.getActivity(context, 8, Intent(context, com.poshith.intent.HomeActivity::class.java)

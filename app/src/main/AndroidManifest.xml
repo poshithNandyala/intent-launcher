@@ -105,6 +105,8 @@
             android:name=".OnboardingActivity"
             android:excludeFromRecents="true"
             android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="com.poshith.intent.setup"
             android:windowSoftInputMode="adjustResize|stateHidden" />
 
         <activity

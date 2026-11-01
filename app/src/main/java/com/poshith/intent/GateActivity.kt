@@ -16,6 +16,7 @@ import com.poshith.intent.core.BlockReason
 import com.poshith.intent.core.Decision
 import com.poshith.intent.core.Feeling
 import com.poshith.intent.core.Limits
+import com.poshith.intent.core.Mode
 import com.poshith.intent.core.Purpose
 import com.poshith.intent.core.Rule
 import com.poshith.intent.data.Apps
@@ -147,7 +148,12 @@ class GateActivity : BaseActivity() {
                 // Limits across all mindful apps come first: switching feeds doesn't start over.
                 val now = System.currentTimeMillis()
                 val rest = if (Store.restOn) Limits.restUntil(Store.sessionStarts, now, Store.restUntil) else 0L
-                if (rest > Store.restUntil) Store.restUntil = rest
+                if (rest > Store.restUntil) {
+                    Store.restUntil = rest
+                    // A rest is for all of them: sessions still running in other mindful apps end too,
+                    // or going back to one of those would skip the rest.
+                    for (p in Store.packagesWithMode(Mode.MINDFUL)) Store.sessions { it.close(p) }
+                }
                 when {
                     budgetLeft() == 0 -> buildBudget(col)
                     d.limitReached -> buildLimit(col, d)
@@ -358,7 +364,7 @@ class GateActivity : BaseActivity() {
             }
             BlockReason.BREAK -> {
                 title(col, "REAL BREAK", "Not now")
-                line(col, "You're on a break. Only calls get through: everything else waits for you.", P.text2, 16f, 14)
+                line(col, (if (until.isNotEmpty()) "You're on a break until $until. " else "You're on a break. ") + "Only calls get through: everything else waits for you.", P.text2, 16f, 14)
                 actions(col, "Back to my break", HoldButton(this, "Hold to end the break", 6000) { com.poshith.intent.guard.Break.end(this); build() })
             }
             BlockReason.BASIC -> {
@@ -434,14 +440,19 @@ class GateActivity : BaseActivity() {
         if (leaving) return
         leaving = true
         val now = SystemClock.elapsedRealtime()
-        // With Focus Guard on, minutes count only while the app is in front. Without it nothing can
-        // tell, so the minutes run on the clock from now and a reminder says when they're up.
-        val guard = Launch.isGuardOn(this)
+        // With Focus Guard running, minutes count only while the app is in front. Without it nothing can
+        // tell, so the minutes run on the clock from now and a reminder says when they're up. "Running",
+        // not "switched on": some phones stop the service and leave its switch on, and then only the
+        // reminder is left to end the session. (If Focus Guard comes back, it takes over and cancels it.)
+        val guard = FocusGuardService.running
         // Minutes start now. Focus Guard pauses them while you're away from the app and resumes them
         // when you come back; if it ever misses that, the clock still runs, so a session always ends.
         Store.sessions { it.admit(pkg, min, why, now, System.currentTimeMillis(), runningNow = true) }
-        Stats.sessionStarted(pkg, min)
-        Store.noteSessionStart(System.currentTimeMillis())
+        // Only mindful sessions count toward the mindful budget and the short rest; a one-time unlock
+        // of a blocked or check-in app is its own thing.
+        val mindful = Store.rule(pkg).mode == Mode.MINDFUL
+        Stats.sessionStarted(pkg, min, mindful)
+        if (mindful) Store.noteSessionStart(System.currentTimeMillis())
         if (!guard) Reminder.schedule(this, pkg, min)
         openApp()
     }
