@@ -260,7 +260,7 @@ if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; 
     snap shorts-after-five         # expected: ReelsActivity again, "That's 7 in a row"
     record shorts-pause-again
     expect_text "That's 7 in a row" shorts-pause-again
-    tap "Close"
+    tap "Close YouTube"
     snap shorts-closed             # expected: Intent's home
     expect_top HomeActivity shorts-closed
     record home-after-shorts
@@ -285,7 +285,7 @@ if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; 
     record strict-stop
     expect_text "Shorts are off" strict-stop
     grep -q "Watch" "$OUT"/*-strict-stop.txt && fail "strict-stop: a \"Watch more\" button in Strict mode"
-    tap "Close"
+    tap "Close YouTube"
     sleep 2
     timeout 30 adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
     sleep 4
@@ -293,7 +293,7 @@ if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; 
     expect_top ReelsActivity strict-second-stop
     record strict-locked
     expect_text "locked until" strict-locked
-    tap "Close"
+    tap "Close YouTube"
     sleep 2
     timeout 30 adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
     wait_top GateActivity 10
