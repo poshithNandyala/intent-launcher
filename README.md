@@ -3,7 +3,7 @@
 An Android home screen that keeps your tools one tap away and puts a short, kind pause in front of the apps that pull you in.</p>
 
 <p align="center">
-  <a href="https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.4.2.apk"><b>⬇ Download the APK</b></a> ·
+  <a href="https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.5.0.apk"><b>⬇ Download the APK</b></a> ·
   <a href="docs/RESEARCH.md">The research</a> ·
   <a href="PRIVACY.md">Privacy</a>
 </p>
@@ -45,8 +45,8 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
 
 ## Install
 
-1. Download **[Intent-1.4.2.apk](https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.4.2.apk)** on your phone and open it. Allow "install unknown apps" for your browser if Android asks.
-   SHA-256 `417e3a2f841c5ce012674617349a41c8bb726a854b8b85d2dfc5c4279f67d5ea`
+1. Download **[Intent-1.5.0.apk](https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.5.0.apk)** on your phone and open it. Allow "install unknown apps" for your browser if Android asks.
+   SHA-256 `4573c8b6c5d2c4aa90ec4a280ae574f79e4657d29ba0e539042e34d0659f46b9`
    Updating? It installs over 1.4.x, 1.2.0 and older. The 1.3.0 build from 1 November was signed with a different key: uninstall that one first.
 2. Open Intent and follow the two-minute setup: choose your essentials, the apps that pull you in (only Instagram comes ticked), your if-then plan, and then turn on the protections one by one. If Android restarts setup when you pick Intent as your home app, it picks up where you were.
 3. **Make Intent your home app** when asked, or later in *Settings › Apps › Default apps › Home app*.
