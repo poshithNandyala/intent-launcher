@@ -102,6 +102,8 @@ adb shell am force-stop $PKG; sleep 1
 timeout 30 adb shell am start -n $PKG/.HomeActivity > /dev/null 2>&1; sleep 4
 record setup-after-restart
 expect_text "When you feel the pull" setup-after-restart
+tap "Next";               record strict-choice
+tap "Gentle"              # the Shorts test below uses the gentle pause; Strict gets its own test
 tap "Next";               record protect
 expect_text "Turn on your protection" protect
 tap "Skip for now";       record quiet
@@ -262,6 +264,42 @@ if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; 
     snap shorts-closed             # expected: Intent's home
     expect_top HomeActivity shorts-closed
     record home-after-shorts
+
+    # Strict mode: no Shorts a day, so stepping into Shorts is a stop (no "more" button); going back
+    # locks the pull apps; a third try meets Focus Guard's lock screen.
+    adb shell input keyevent KEYCODE_HOME; sleep 1
+    adb shell input swipe "$((W / 2))" "$((H / 2))" "$((W / 2))" "$((H / 2))" 900; sleep 1
+    tap "Settings"; sleep 1
+    tap "Strict mode"
+    record strict-settings
+    tap "None"
+    tap "Turn on Strict mode";     record strict-code
+    tap "I wrote it down. Turn on Strict mode"
+    record strict-on
+    expect_text "No stops yet today" strict-on
+    adb shell input keyevent KEYCODE_HOME; sleep 2
+    timeout 30 adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
+    sleep 4
+    snap strict-first-stop          # expected: closed, ReelsActivity "Shorts are off"
+    expect_top ReelsActivity strict-first-stop
+    record strict-stop
+    expect_text "Shorts are off" strict-stop
+    grep -q "Watch" "$OUT"/*-strict-stop.txt && fail "strict-stop: a \"Watch more\" button in Strict mode"
+    tap "Close"
+    sleep 2
+    timeout 30 adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
+    sleep 4
+    snap strict-second-stop         # expected: closed and locked for 30 minutes
+    expect_top ReelsActivity strict-second-stop
+    record strict-locked
+    expect_text "locked until" strict-locked
+    tap "Close"
+    sleep 2
+    timeout 30 adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
+    wait_top GateActivity 10
+    snap strict-locked-gate         # expected: Focus Guard's lock screen, not the app
+    expect_top GateActivity strict-locked-gate
+    adb shell input keyevent KEYCODE_BACK; sleep 2
 fi
 
 # Basic phone: only essentials on the home screen, and swiping up must not open search

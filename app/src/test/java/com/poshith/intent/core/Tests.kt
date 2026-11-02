@@ -18,7 +18,9 @@ private fun sit(
     opens: Int = 0, session: Boolean = false, protected: Boolean = false, focusUntil: Long = 0,
     wd: Window? = null, strict: Boolean = false, minute: Int = 12 * 60, recent: Boolean = false,
     isBreak: Boolean = false, morningUntil: Long = 0, checkIns: List<Window> = emptyList(), basic: Boolean = false,
+    lockedUntil: Long = 0,
 ) = Situation(
+    lockedUntilWallMs = lockedUntil,
     checkIns = checkIns, focusIsBasic = basic,
     nowWallMs = 1_000_000L, minuteOfDay = minute, focusUntilWallMs = focusUntil, focusIsBreak = isBreak,
     morningUntilWallMs = morningUntil, windDown = wd,
@@ -268,6 +270,29 @@ fun main() {
     check("a rest that's on stays until it ends", Limits.restUntil(listOf(0L, 1 * min, 2 * min), 9 * min, 12 * min) == 12 * min)
     check("sessions spread out: no rest", Limits.restUntil(listOf(0L, 6 * min, 12 * min), 13 * min, 0L) == 0L)
     check("one rest doesn't chain into the next", Limits.restUntil(listOf(1 * min, 2 * min, 4 * min), 10 * min, 9 * min) == 0L)
+
+    // --- Strict mode: no extensions, looser from tomorrow, locks that grow, an emergency code
+    val h = 60 * min
+    check("first stop only closes", Strict.lockUntil(1, 0L, 10 * h) == 0L)
+    check("second stop locks 30 min", Strict.lockUntil(2, 0L, 10 * h) == 30 * min)
+    check("third stop locks 2 h", Strict.lockUntil(3, 0L, 10 * h) == 2 * h)
+    check("fourth stop: the rest of the day", Strict.lockUntil(4, 0L, 10 * h) == 10 * h)
+    check("late at night the day lock still lasts 2 h", Strict.lockUntil(4, 0L, 5 * min) == 2 * h)
+    check("looser applies from the chosen day", Strict.due("2026-11-04", "2026-11-04") && Strict.due("2026-11-05", "2026-11-04"))
+    check("looser doesn't apply before it", !Strict.due("2026-11-03", "2026-11-04") && !Strict.due("2026-11-03", ""))
+    check("2 h a day is 1 in 8 waking hours", Strict.oneInWakingHours(120) == 8)
+    check("2 h a day is 46 waking days a year", Strict.wakingDaysPerYear(120) == 46)
+    val code = Strict.newCode(java.util.Random(7))
+    check("code looks like XXXX-XXXX", Regex("[A-Z2-9]{4}-[A-Z2-9]{4}").matches(code))
+    check("code has no look-alike characters", code.none { it in "01OIL" })
+    val stored = Strict.hash(code)
+    check("the code matches, typed loosely", Strict.matches(code.lowercase().replace("-", " "), stored))
+    check("a wrong code doesn't", !Strict.matches("AAAA-AAAA", stored) && !Strict.matches("", stored) && !Strict.matches(code, ""))
+    check("only a hash is kept", stored.length == 64 && !stored.contains(Strict.normalize(code)))
+    val locked = Policy.decide(Rule(Mode.MINDFUL), sit(lockedUntil = 2_000_000L, session = true))
+    check("locked beats a running session", locked is Decision.Blocked && locked.reason == BlockReason.LOCKED)
+    check("essentials never lock", Policy.decide(Rule(Mode.ESSENTIAL), sit(lockedUntil = 2_000_000L)) is Decision.Open)
+    check("blunt lines are short and distinct", Quotes.blunt.all { it.length in 8..90 } && Quotes.blunt.toSet().size == Quotes.blunt.size)
 
     // --- lessons are complete
     check("lessons have sources", Lessons.all.all { it.source.isNotBlank() && it.body.length > 60 && it.tryThis.isNotBlank() })

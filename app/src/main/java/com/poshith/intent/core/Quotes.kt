@@ -133,4 +133,39 @@ object Quotes {
         all[Math.floorMod(Math.floorMod(wallMs / everyMs, all.size.toLong()).toInt() * momentStep + 5, all.size)]
 
     fun next(current: Quote): Quote = all[(all.indexOf(current) + 1).mod(all.size)]
+
+    /**
+     * Blunt lines for the Shorts and Reels pause, where a gentle quote gets skimmed. Hard on the habit,
+     * never on the person: no insults, no shame about who you are, just what the swipe is costing.
+     */
+    val blunt: List<String> = listOf(
+        "You're not relaxing. You're numbing.",
+        "Another one won't fix whatever you're avoiding.",
+        "Be honest: you stopped enjoying this a while ago.",
+        "You won't remember a single one of these tomorrow.",
+        "Somebody is building their dream right now. You're watching it.",
+        "This is exactly how a whole evening disappears.",
+        "The algorithm is winning. Your goals are losing.",
+        "Ten more won't feel any better than the last ten.",
+        "You said you'd change. This isn't it.",
+        "You're paying for this with the only life you get.",
+        "Close it. You already know.",
+        "Strangers' highlights. Your hours.",
+        "This app is working perfectly. On you.",
+        "Every swipe is a vote. Look who's winning.",
+        "Your competition isn't scrolling right now.",
+        "Put. It. Down.",
+        "You've seen this before. It didn't change your life then either.",
+        "The feed doesn't care about you. Your goals do.",
+        "Nobody gets fit, rich or wise watching other people do it.",
+        "Stop giving your best hours to an algorithm.",
+        "Keep doing this and nothing changes. That's the deal.",
+        "Bored? Good. Do something with it.",
+        "Wake up. This is your life, not a feed.",
+        "The urge is lying to you. One more never means one.",
+        "You don't need another video. You need to start.",
+    )
+
+    /** A blunt line for a moment: changes every half minute, so it doesn't turn into wallpaper. */
+    fun bluntFor(wallMs: Long): String = blunt[Math.floorMod(Math.floorMod(wallMs / 30_000L, blunt.size.toLong()).toInt() * 7 + 2, blunt.size)]
 }

@@ -57,6 +57,9 @@ object Launch {
             hasActiveSession = active,
             protectedApp = if (Store.breakActive(now)) breakAllowed(ctx, pkg) else isProtected(ctx, pkg),
             recentlyEnded = Store.endedRecently(pkg),
+            // Strict mode's lock covers every pull app, and YouTube and Instagram even if they aren't one.
+            lockedUntilWallMs = if ((rule.mode == com.poshith.intent.core.Mode.MINDFUL || com.poshith.intent.core.Feed.of(pkg) != null) &&
+                Store.locked(now)) Store.lockUntil else 0L,
         )
         return Policy.decide(rule, s)
     }

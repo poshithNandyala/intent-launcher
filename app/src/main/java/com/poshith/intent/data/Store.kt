@@ -42,6 +42,59 @@ object Store {
     var onboarded: Boolean get() = bool("onboarded", false); set(v) = putB("onboarded", v)
     /** The setup page you're on, so setup picks up there if Android restarts it (choosing a home app can). */
     var setupStep: Int get() = int("setup_step", 0); set(v) = putI("setup_step", v)
+
+    // ------------------------------------------------------------------ strict mode
+    /** Strict mode (see core/Strict): no extensions in the moment, looser only from tomorrow, locks. */
+    var strictOn: Boolean get() = bool("strict_on", false); set(v) = putB("strict_on", v)
+    /** Asked to turn Strict mode off: it holds until this day ("" = not asked). */
+    var strictOffDay: String get() = str("strict_off_day"); set(v) = put("strict_off_day", v)
+    /** The emergency code's hash (the code itself is shown once and never kept). */
+    var strictCodeHash: String get() = str("strict_code"); set(v) = put("strict_code", v)
+
+    fun strictActive(): Boolean {
+        if (!strictOn) return false
+        if (com.poshith.intent.core.Strict.due(dayKey(), strictOffDay)) { strictOn = false; strictOffDay = ""; return false }
+        return true
+    }
+
+    /** Strict mode stays on until midnight, then turns off. */
+    fun strictOffTomorrow() { strictOffDay = dayKey(System.currentTimeMillis() + 86_400_000L) }
+
+    /** Pull apps locked (came back to the feed after being stopped) until then. */
+    var lockUntil: Long get() = long("lock_until", 0L); set(v) = putL("lock_until", v)
+    fun locked(now: Long = System.currentTimeMillis()): Boolean = strictActive() && lockUntil > now
+
+    /** Strict stops today (Shorts or Reels past today's number): each one costs more. */
+    fun stopsToday(now: Long = System.currentTimeMillis()): Int = if (str("stops_day") == dayKey(now)) int("stops", 0) else 0
+    fun noteStop(now: Long = System.currentTimeMillis()): Int {
+        val n = stopsToday(now) + 1
+        p.edit().putString("stops_day", dayKey(now)).putInt("stops", n).apply()
+        return n
+    }
+
+    /** The end of today (local midnight), for "locked for the rest of the day". */
+    fun endOfDay(now: Long = System.currentTimeMillis()): Long {
+        val c = Calendar.getInstance(); c.timeInMillis = now
+        c.set(Calendar.HOUR_OF_DAY, 0); c.set(Calendar.MINUTE, 0); c.set(Calendar.SECOND, 0); c.set(Calendar.MILLISECOND, 0)
+        c.add(Calendar.DAY_OF_YEAR, 1)
+        return c.timeInMillis
+    }
+
+    /** A looser value chosen in Strict mode: it applies from tomorrow. */
+    fun setTomorrow(key: String, v: Int) {
+        p.edit().putInt(key + "_next", v).putString(key + "_next_day", dayKey(System.currentTimeMillis() + 86_400_000L)).apply()
+    }
+    /** The value waiting for tomorrow, or null. */
+    fun tomorrowValue(key: String): Int? = if (str(key + "_next_day").isNotEmpty()) int(key + "_next", 0) else null
+    fun clearTomorrow(key: String) { p.edit().remove(key + "_next").remove(key + "_next_day").apply() }
+    private fun applyTomorrow(key: String) {
+        val day = str(key + "_next_day")
+        if (!com.poshith.intent.core.Strict.due(dayKey(), day)) return
+        p.edit().putInt(key, int(key + "_next", 0)).remove(key + "_next").remove(key + "_next_day").apply()
+    }
+
+    /** "I'm someone who…": your own words, shown when Intent stops you. */
+    var identity: String get() = str("identity"); set(v) = put("identity", v.trim().take(80))
     /** "Remind me next week" on the home screen's "turn on your protection" line. */
     var protectNudgeAfter: Long get() = long("protect_nudge_after", 0L); set(v) = putL("protect_nudge_after", v)
     var installDay: String get() = str("install_day"); set(v) = put("install_day", v)
@@ -62,8 +115,12 @@ object Store {
     var quoteDaily: Boolean get() = bool("quote_daily", false); set(v) = putB("quote_daily", v)
     /** Shorts and Reels: step in when you start swiping (needs the "Intent · Shorts & Reels" service). */
     var reelsOn: Boolean get() = bool("reels_on", true); set(v) = putB("reels_on", v)
-    /** After "watch more", how many swipes before Intent asks again. 0: the swipe always stops you. */
-    var reelsAllow: Int get() = int("reels_allow", 5); set(v) = putI("reels_allow", v)
+    /** After "watch more", how many swipes before Intent asks again. 0: the swipe always stops you.
+     *  In Strict mode: Shorts and Reels a day, together, with no "more". A looser number set in
+     *  Strict mode waits for tomorrow (reels_allow_next). */
+    var reelsAllow: Int
+        get() { applyTomorrow("reels_allow"); return int("reels_allow", 5) }
+        set(v) = putI("reels_allow", v)
     /** If the unlock question gets no answer, lock the phone again (needs Focus Guard). */
     var lockIfNoAnswer: Boolean get() = bool("lock_no_answer", true); set(v) = putB("lock_no_answer", v)
     var autoOpenSingle: Boolean get() = bool("auto_open_single", false); set(v) = putB("auto_open_single", v)
@@ -164,7 +221,9 @@ object Store {
     var defaultPause: Int get() = int("default_pause", Rule.DEFAULT_PAUSE_SEC); set(v) = putI("default_pause", v)
     var defaultSession: Int get() = int("default_session", Rule.DEFAULT_SESSION_MIN); set(v) = putI("default_session", v)
     /** One daily budget of minutes for all mindful apps together (0 = none). Every session takes its minutes from it. */
-    var budgetMin: Int get() = int("budget_min", 0); set(v) = putI("budget_min", v)
+    var budgetMin: Int
+        get() { applyTomorrow("budget_min"); return int("budget_min", 0) }
+        set(v) = putI("budget_min", v)
     /** A short rest for mindful apps after several sessions close together. */
     var restOn: Boolean get() = bool("rest_on", true); set(v) = putB("rest_on", v)
     var restUntil: Long get() = long("rest_until", 0L); set(v) = putL("rest_until", v)

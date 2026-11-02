@@ -77,6 +77,11 @@ class ReelsGuardService : AccessibilityService() {
         if (e == null || !Store.reelsOn) return
         val pkg = e.packageName?.toString() ?: return
         val feed = Feed.of(pkg) ?: return
+        // Strict mode lock: YouTube and Instagram stay closed. (Focus Guard does this for every pull app
+        // when it's on; this covers them when it isn't.)
+        if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && !FocusGuardService.running && Store.locked()) {
+            stop(feed, pkg, counts = false); return
+        }
         when (e.eventType) {
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> onScroll(e, feed, pkg)
             // The screen changed: look (at most every 300 ms) for the full-screen player, and whether
@@ -125,6 +130,12 @@ class ReelsGuardService : AccessibilityService() {
         }
         val entering = inFeed != feed
         inFeed = feed
+        // Strict mode: stepping into the feed with today's number used is a stop.
+        if (entering && Store.strictActive() && Stats.shortVideosToday() >= Store.reelsAllow) {
+            lastPage = screen.page
+            stop(feed, pkg, counts = true)
+            return
+        }
         // "Off" means off: stepping into the feed at all gets the pause, not just the swipe.
         if (entering && Store.reelsAllow == 0) {
             lastPage = screen.page
@@ -189,8 +200,40 @@ class ReelsGuardService : AccessibilityService() {
             s.ask()
         }
         Stats.shortVideo(feed)
+        // Strict mode: no questions, just today's number (Shorts and Reels together). Past it, a stop.
+        if (Store.strictActive()) {
+            val today = Stats.shortVideosToday()
+            log("swipe counted (strict), $today of ${Store.reelsAllow} today")
+            if (today > Store.reelsAllow) stop(feed, pkg, counts = true)
+            return
+        }
         log("swipe counted, ask=$ask")
         if (ask != Sitting.Ask.NONE) ask(feed, pkg, ask, count = true)
+    }
+
+    /**
+     * Strict mode: close the app and say so. A stop that [counts] goes on today's tally, and from the
+     * second one the pull apps lock (30 minutes, then 2 hours, then the day).
+     */
+    private fun stop(feed: Feed, pkg: String, counts: Boolean) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - askedAt <= 1_500 || com.poshith.intent.guard.Calls.active(this)) return
+        askedAt = now
+        val wall = System.currentTimeMillis()
+        var n = 0
+        if (counts) {
+            n = Store.noteStop(wall)
+            val until = com.poshith.intent.core.Strict.lockUntil(n, wall, Store.endOfDay(wall))
+            if (until > Store.lockUntil) Store.lockUntil = until
+        }
+        log("strict stop $n, locked until ${Store.lockUntil}")
+        lastPage = null; twoBack = null; inFeed = null
+        Closer.toHome(this)
+        Closer.silence(this, pkg)
+        val until = if (Store.lockUntil > wall) Store.lockUntil else 0L
+        try {
+            startActivity(ReelsActivity.stopIntent(this, feed, pkg, n, until).addFlags(Closer.OVER_APP or Intent.FLAG_ACTIVITY_NO_ANIMATION))
+        } catch (_: Exception) {}
     }
 
     private fun ask(feed: Feed, pkg: String, ask: Sitting.Ask, @Suppress("UNUSED_PARAMETER") count: Boolean) {

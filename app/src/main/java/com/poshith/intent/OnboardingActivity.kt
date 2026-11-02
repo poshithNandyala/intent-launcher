@@ -33,7 +33,9 @@ import com.poshith.intent.ui.hbox
 import com.poshith.intent.ui.lp
 import com.poshith.intent.ui.onText
 import com.poshith.intent.ui.paragraph
+import com.poshith.intent.ui.ripple
 import com.poshith.intent.ui.rounded
+import com.poshith.intent.ui.tick
 import com.poshith.intent.ui.row
 import com.poshith.intent.ui.scroller
 import com.poshith.intent.ui.space
@@ -50,7 +52,9 @@ class OnboardingActivity : BaseActivity() {
     }
 
     private var step = 0
-    private val steps = listOf("welcome", "essentials", "pull", "plan", "protect", "quiet", "done")
+    private val steps = listOf("welcome", "essentials", "pull", "plan", "strict", "protect", "quiet", "done")
+    /** "gentle" or "strict", once chosen on the strict page. */
+    private var strictChoice: String? = null
     private var essentials: List<String> = emptyList()
     private var pull: List<String> = emptyList()
     private lateinit var frame: FrameLayout
@@ -103,6 +107,7 @@ class OnboardingActivity : BaseActivity() {
             "essentials" -> essentialsPage()
             "pull" -> pullPage()
             "plan" -> planPage()
+            "strict" -> strictPage()
             "protect" -> protectPage()
             "quiet" -> quietPage()
             else -> donePage()
@@ -209,6 +214,61 @@ class OnboardingActivity : BaseActivity() {
         }, lp())
         root.addView(actions, lp())
         return root
+    }
+
+    /**
+     * Gentle or Strict, chosen on purpose (a goal you pick yourself holds better than one you're handed).
+     * Strict: no extensions in the moment, locks if you go back, looser only from tomorrow.
+     */
+    private fun strictPage(): View {
+        if (strictChoice == null && Store.strictActive()) strictChoice = "strict"
+        val body = vbox().apply { setPadding(dp(16), dp(8), dp(16), 0) }
+        fun card(key: String, title: String, badge: String?, sub: String) {
+            val chosen = strictChoice == key
+            val c = vbox().apply {
+                setPadding(dp(20), dp(16), dp(20), dp(16))
+                background = ripple(rounded(if (chosen) P.accentSoft else P.surface, dp(18).toFloat(), if (chosen) P.accent else 0, dp(2)), dp(18).toFloat())
+                isClickable = true
+                setOnClickListener { it.tick(); strictChoice = key; show() }
+            }
+            val head = hbox(Gravity.CENTER_VERTICAL)
+            head.addView(text(title, 18f, P.text, Fonts.medium(this)), lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+            if (chosen) head.addView(text("✓", 18f, P.accent, Fonts.medium(this)))
+            c.addView(head, lp())
+            if (badge != null) c.addView(text(badge, 12.5f, P.accent, Fonts.medium(this)).apply { setPadding(0, dp(2), 0, 0) }, lp())
+            c.addView(text(sub, 14.5f, P.text2).apply { setLineSpacing(0f, 1.22f); setPadding(0, dp(6), 0, 0) }, lp())
+            body.addView(c, lp().apply { bottomMargin = dp(12) })
+        }
+        card("gentle", "Gentle", null, "A short pause before your pull apps, and a question at the first Short or Reel. You decide each time.")
+        card("strict", "Strict", "If pauses haven't worked for you",
+            "No “a few more” in the moment. A number of Shorts a day, then the app closes; go back and your pull apps lock. Rules only get looser from tomorrow, and an emergency code is the only way past it.")
+        if (strictChoice == "strict") {
+            body.addView(text("Shorts and Reels a day", 16f, P.text, Fonts.medium(this)).apply { setPadding(dp(8), dp(10), dp(8), dp(4)) }, lp())
+            val f = Flow(this).apply { setPadding(dp(4), dp(4), dp(4), dp(4)) }
+            for (v in com.poshith.intent.core.Strict.SHORTS_CHOICES) {
+                val c = Chip(this, if (v == 0) "None" else "$v"); c.on = v == Store.reelsAllow
+                c.setOnClickListener { it.tick(); Store.reelsAllow = v; show() }
+                f.addView(c)
+            }
+            body.addView(f, lp())
+            body.addView(text("Minutes a day for all pull apps", 16f, P.text, Fonts.medium(this)).apply { setPadding(dp(8), dp(12), dp(8), dp(4)) }, lp())
+            val g = Flow(this).apply { setPadding(dp(4), dp(4), dp(4), dp(4)) }
+            for (v in com.poshith.intent.core.Limits.BUDGET_CHOICES) {
+                val c = Chip(this, if (v == 0) "No limit" else "$v min"); c.on = v == Store.budgetMin
+                c.setOnClickListener { it.tick(); Store.budgetMin = v; show() }
+                g.addView(c)
+            }
+            body.addView(g, lp())
+        }
+        return page("How strict should Intent be?", "Choose while you're calm. You can change it later.", body,
+            when (strictChoice) { null -> "Choose one"; "strict" -> if (Store.strictActive()) "Next" else "Next: your emergency code"; else -> "Next" },
+            {
+                when (strictChoice) {
+                    null -> {}
+                    "strict" -> if (Store.strictActive()) next() else strictCodeSheet { next() }
+                    else -> next()
+                }
+            })
     }
 
     private val INSTAGRAM = setOf("com.instagram.android", "com.instagram.lite")

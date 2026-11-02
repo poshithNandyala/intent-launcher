@@ -33,6 +33,8 @@ import com.poshith.intent.ui.Chip
 import com.poshith.intent.ui.Flow
 import com.poshith.intent.ui.Fonts
 import com.poshith.intent.ui.Kind
+import com.poshith.intent.ui.askEmergencyCode
+import com.poshith.intent.ui.hideKeyboard
 import com.poshith.intent.ui.Overlay
 import com.poshith.intent.ui.P
 import com.poshith.intent.ui.Sheet
@@ -101,6 +103,7 @@ class SettingsActivity : BaseActivity() {
             "blocked" -> pagePicker(Mode.BLOCKED)
             "hidden" -> pageHidden()
             "reels" -> pageReels()
+            "strict" -> pageStrict()
             "focus" -> pageFocus()
             "gestures" -> pageGestures()
             "appearance" -> pageAppearance()
@@ -179,6 +182,7 @@ class SettingsActivity : BaseActivity() {
             col.addView(warn, lp().apply { leftMargin = dp(16); rightMargin = dp(16); topMargin = dp(8) })
         }
         add(sectionTitle("Your apps"))
+        add(row("Strict mode", strictSummary(), null) { go("strict") })
         add(row("Home screen apps", "${Store.homeKeys.size} of ${Store.MAX_HOME} · order, names, layout", null) { go("home") })
         add(row("Essentials", "Never paused, even in focus: ${names(Store.packagesWithMode(Mode.ESSENTIAL))}", null) { go("essentials") })
         add(row("Mindful apps", "Pause first, then a session you choose: ${names(Store.packagesWithMode(Mode.MINDFUL))}", null) { go("mindful") })
@@ -205,7 +209,13 @@ class SettingsActivity : BaseActivity() {
         add(row("Privacy", "No internet permission. Nothing leaves your phone.", null) { go("privacy") })
         add(row("About and research", null, null) { go("about") })
         add(row("Change home app", "Switch to another launcher any time", null) { Launch.homeSettings(this) })
-        add(row("Run setup again", null, null) { startActivity(Intent(this, OnboardingActivity::class.java).putExtra(OnboardingActivity.EXTRA_RESTART, true)) })
+        add(row("Run setup again", null, null) {
+            // Setup can change every rule at once, so it waits like any other loosening (and Strict mode
+            // keeps it for tomorrow).
+            loosen("Run setup again?", "It can change all your rules at once.") {
+                startActivity(Intent(this, OnboardingActivity::class.java).putExtra(OnboardingActivity.EXTRA_RESTART, true))
+            }
+        })
     }
 
     private fun ruleChangesSheet() {
@@ -483,7 +493,105 @@ class SettingsActivity : BaseActivity() {
             setPadding(dp(24), dp(6), dp(24), dp(6))
             addView(button("Save my own", Kind.QUIET) { if (fld.text.isNotBlank()) { Store.urgePlan = fld.text.toString(); render() } })
         })
+        identityPicker()
     }
+
+    /** "I'm someone who…": shown every time Intent stops you. Who you're becoming, in your words. */
+    private fun identityPicker() {
+        add(sectionTitle("Who you're becoming"))
+        add(paragraph("Every time Intent stops you, it reminds you in your own words. Habits stick when they're part of who you are, not just what you're trying to do.", 14.5f, P.text3))
+        val ideas = listOf("finishes what I start", "keeps promises to myself", "builds things", "is fully present with people",
+            "takes care of my body", "learns something every day")
+        val f = Flow(this).apply { setPadding(dp(24), dp(4), dp(24), dp(10)) }
+        for (i in ideas) {
+            val c = Chip(this, i); c.on = Store.identity == i
+            c.setOnClickListener { it.tick(); Store.identity = if (Store.identity == i) "" else i; render() }
+            f.addView(c)
+        }
+        add(f)
+        val fld = field("I'm someone who…", if (Store.identity in ideas) "" else Store.identity, caps = false)
+        add(FrameLayout(this).apply { setPadding(dp(24), dp(6), dp(24), dp(6)); addView(fld) })
+        add(FrameLayout(this).apply {
+            setPadding(dp(24), dp(6), dp(24), dp(6))
+            addView(button("Save", Kind.QUIET) {
+                Store.identity = fld.text.toString().trim().removePrefix("I'm someone who").removePrefix("i'm someone who").trim()
+                hideKeyboard(this@SettingsActivity, fld); render()
+            })
+        })
+    }
+
+    // ---------------------------------------------------------------------------------- strict mode
+
+    private fun strictSummary(): String = when {
+        !Store.strictActive() -> "Off · no extensions, looser only from tomorrow"
+        Store.strictOffDay.isNotEmpty() -> "On until midnight"
+        Store.locked() -> "On · pull apps locked until ${timeLabelAt(Store.lockUntil)}"
+        else -> "On · ${Store.reelsAllow} Shorts and Reels a day"
+    }
+
+    private fun timeLabelAt(ms: Long): String = DateFormat.getTimeFormat(this).format(java.util.Date(ms))
+
+    private fun pageStrict() {
+        header("Strict mode", "Limits you set while calm, held while you're craving. A pause with a “few more” button gets waited out; this one has no button to press.")
+        val on = Store.strictActive()
+
+        // The two dials first: stricter applies now, looser from tomorrow.
+        add(sectionTitle("Shorts and Reels a day"))
+        val nextReels = Store.tomorrowValue("reels_allow")
+        add(chips(com.poshith.intent.core.Strict.SHORTS_CHOICES, Store.reelsAllow, { if (it == 0) "None" else "$it" }) { v ->
+            if (!on || v <= Store.reelsAllow) { Store.reelsAllow = v; Store.clearTomorrow("reels_allow") }
+            else Store.setTomorrow("reels_allow", v)
+            render()
+        })
+        if (on && nextReels != null) add(paragraph("From tomorrow: ${if (nextReels == 0) "none" else "$nextReels"}.", 14f, P.accent))
+        add(sectionTitle("Minutes a day for all pull apps"))
+        val nextBudget = Store.tomorrowValue("budget_min")
+        add(chips(com.poshith.intent.core.Limits.BUDGET_CHOICES, Store.budgetMin, { if (it == 0) "No limit" else "$it min" }) { v ->
+            val cur = Store.budgetMin
+            val stricter = v != 0 && (cur == 0 || v < cur)
+            if (!on || stricter || v == cur) { Store.budgetMin = v; Store.clearTomorrow("budget_min") }
+            else Store.setTomorrow("budget_min", v)
+            render()
+        })
+        if (on && nextBudget != null) add(paragraph("From tomorrow: ${if (nextBudget == 0) "no limit" else "$nextBudget min"}.", 14f, P.accent))
+
+        // Then: turn it on, or how today is going.
+        if (on) {
+            add(sectionTitle("Today"))
+            val n = Store.stopsToday()
+            add(paragraph(when {
+                Store.locked() -> "Stopped $n time${if (n == 1) "" else "s"} today. Pull apps are locked until ${timeLabelAt(Store.lockUntil)}."
+                n > 0 -> "Stopped $n time${if (n == 1) "" else "s"} today. ${com.poshith.intent.core.Strict.nextLockWords(n)}"
+                else -> "No stops yet today."
+            }, 15f, P.text2))
+            if (Store.strictOffDay.isEmpty()) {
+                add(row("Turn off Strict mode", "It stays on until midnight, so tomorrow's you decides.", null) {
+                    Store.strictOffTomorrow(); render()
+                })
+            } else {
+                add(row("Keep Strict mode on", "It's set to switch off at midnight.", null) { Store.strictOffDay = ""; render() })
+            }
+            if (Store.strictCodeHash.isNotEmpty()) add(row("Turn it off now", "With your emergency code", null) {
+                askEmergencyCode("It turns Strict mode off now.") { Store.strictOn = false; Store.strictOffDay = ""; render() }
+            })
+        } else {
+            add(FrameLayout(this).apply {
+                setPadding(dp(24), dp(18), dp(24), dp(6))
+                addView(button("Turn on Strict mode", Kind.PRIMARY) { strictCodeSheet { render() } })
+            })
+            add(paragraph("Choose your numbers above while you're calm. Intent shows your emergency code once.", 14f, P.text3))
+        }
+
+        fun point(s: String) = add(text("•  $s", 15f, P.text2).apply { setLineSpacing(0f, 1.25f); setPadding(dp(24), dp(5), dp(24), dp(5)) })
+        add(sectionTitle("How it works"))
+        point("Shorts and Reels: a number a day (both together), no extensions. Past it, the app closes.")
+        point("Go back after being stopped and your pull apps lock: 30 minutes, then 2 hours, then the rest of the day.")
+        point("Nothing to wait out: the daily limit, budget, rest and quiet hours have no unlock buttons.")
+        point("Rules only get looser from tomorrow. Stricter applies now.")
+        point("One way past it: an emergency code, shown once. Keep it where it's hard to reach.")
+        identityPicker()
+    }
+
 
     // ---------------------------------------------------------------------------------- phone
 
@@ -560,7 +668,9 @@ class SettingsActivity : BaseActivity() {
         add(sectionTitle("After the first swipe"))
         add(paragraph("The first swipe always asks. If you choose to keep watching, how many before it asks again? “None” means the swipe always stops you.", 14.5f))
         fun label(v: Int) = if (v == 0) "None" else "$v"
-        add(chips(intArrayOf(0, 5, 10, 20), Store.reelsAllow, { label(it) }) { v ->
+        if (Store.strictActive()) {
+            add(row("Strict mode is on", "Today's number (${Store.reelsAllow}) and when it changes are on the Strict mode page.", null) { go("strict") })
+        } else add(chips(intArrayOf(0, 5, 10, 20), Store.reelsAllow, { label(it) }) { v ->
             if (v > Store.reelsAllow) loosen("Allow more?", "From ${label(Store.reelsAllow)} to $v before it asks again.") { Store.reelsAllow = v; render() }
             else { Store.reelsAllow = v; render() }
         })
@@ -739,6 +849,28 @@ class SettingsActivity : BaseActivity() {
 }
 
 /** Focus Guard explanation with Android's "restricted settings" help for apps installed from a file. */
+/**
+ * Turning Strict mode on: a new emergency code, shown once. Only its hash is kept, so after this
+ * sheet nobody (not even Intent) can show it again.
+ */
+fun BaseActivity.strictCodeSheet(onOn: () -> Unit) {
+    val code = com.poshith.intent.core.Strict.newCode(java.security.SecureRandom())
+    val s = Sheet(this, "Your emergency code", "The only way past Strict mode today. Write it on paper and keep it in another room, or send it to a friend and delete the message. Intent never shows it again.")
+    s.add(text(code, 34f, P.text, Fonts.medium(this)).apply {
+        gravity = android.view.Gravity.CENTER; letterSpacing = 0.12f; setPadding(0, dp(10), 0, dp(10))
+        setTextIsSelectable(false)
+    })
+    s.add(button("I wrote it down. Turn on Strict mode", Kind.PRIMARY) {
+        Store.strictCodeHash = com.poshith.intent.core.Strict.hash(code)
+        Store.strictOffDay = ""
+        Store.strictOn = true
+        s.dismiss()
+        onOn()
+    })
+    s.add(button("Not now", Kind.PLAIN) { s.dismiss() })
+    s.show()
+}
+
 /** Shown at the top of a service's sheet when its switch is on but Android stopped it. */
 private fun stoppedNote(a: BaseActivity, s: Sheet, name: String) {
     s.add(a.text("$name has stopped. Its switch is still on, but Android stopped it (some phones do after an update, or to save battery). In the list, turn “Intent · $name” off and on again. To keep it running, let Intent run without battery restrictions.", 15f, P.warn).apply { setLineSpacing(0f, 1.25f) }, 24)

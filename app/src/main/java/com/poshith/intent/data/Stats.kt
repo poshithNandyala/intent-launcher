@@ -53,6 +53,8 @@ object Stats {
         if (mindful) bump(null, "planned", minutes)
     }
     fun justChecking() = bump(null, "justChecking")
+    /** The Strict mode emergency code was used. */
+    fun emergencyUsed() = bump(null, "emergency")
     /** One more swipe through YouTube Shorts or Instagram Reels (counted only with the Shorts & Reels guard on). */
     fun shortVideo(feed: com.poshith.intent.core.Feed) = bump(null, if (feed == com.poshith.intent.core.Feed.SHORTS) "shorts" else "reels")
     fun shortVideosToday(feed: com.poshith.intent.core.Feed): Int = day().let { if (feed == com.poshith.intent.core.Feed.SHORTS) it.shorts else it.reels }

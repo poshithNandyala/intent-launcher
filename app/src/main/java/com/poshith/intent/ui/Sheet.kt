@@ -158,6 +158,8 @@ fun EditText.onText(fn: (String) -> Unit) = addTextChangedListener(object : Text
  */
 fun BaseActivity.confirmLoosen(title: String, message: String, confirmLabel: String = "Yes, change it",
                                onCancel: (() -> Unit)? = null, action: () -> Unit) {
+    // Strict mode: no loosening today at all (tomorrow's you decides).
+    if (Store.strictActive()) { strictBlocksLoosening(onCancel); return }
     val secs = Store.coolOffSec
     if (secs <= 0) { action(); return }
     val s = Sheet(this, title, message)

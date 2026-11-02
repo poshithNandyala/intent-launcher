@@ -634,6 +634,7 @@ class HomeActivity : BaseActivity() {
                 val left = ((Store.focusUntil - now + 59_999) / 60_000L).toInt()
                 (if (Store.focusIsBreak) "Break" else "Focus") + " · $left min left"
             }
+            Store.locked(now) -> "Pull apps locked until ${tf.format(Date(Store.lockUntil))}"
             Store.morningUntil > now -> "Morning quiet until ${tf.format(Date(Store.morningUntil))}"
             Store.windDown?.contains(Store.minuteOfDay(now)) == true ->
                 "Wind-down until ${tf.format(Date(Store.windDown!!.endsAfter(now)))}"
@@ -1220,6 +1221,14 @@ class HomeActivity : BaseActivity() {
         val now = System.currentTimeMillis()
         when {
             Store.focusActive(now) -> focusSheet()
+            Store.locked(now) -> {
+                val at = DateFormat.getTimeFormat(this).format(Date(Store.lockUntil))
+                val s = Sheet(this, "Locked until $at", "Strict mode: you went back to Shorts or Reels after being stopped, so your pull apps rest until $at. " +
+                    com.poshith.intent.core.Strict.nextLockWords(Store.stopsToday()))
+                com.poshith.intent.ui.nextThing()?.let { s.add(paragraph(it, 16f, P.text), 0) }
+                s.item("Strict mode settings") { openSettings("strict") }
+                s.show()
+            }
             Store.morningUntil > now -> {
                 val s = Sheet(this, "Morning quiet", "Mindful apps rest for the first ${Store.morningQuietMin} minutes after your first unlock of the day, so your first thoughts are your own. Change it in Settings.")
                 s.add(HoldButton(this, "Hold to end it for today", 2500) { Store.morningUntil = 0; s.dismiss(); renderStatus() })
