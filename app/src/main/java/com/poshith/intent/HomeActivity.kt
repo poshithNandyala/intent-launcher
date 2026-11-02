@@ -634,7 +634,7 @@ class HomeActivity : BaseActivity() {
                 val left = ((Store.focusUntil - now + 59_999) / 60_000L).toInt()
                 (if (Store.focusIsBreak) "Break" else "Focus") + " · $left min left"
             }
-            Store.locked(now) -> "Pull apps locked until ${tf.format(Date(Store.lockUntil))}"
+            Store.locked(now) -> "Shorts and Reels locked until ${tf.format(Date(Store.lockUntil))}"
             Store.morningUntil > now -> "Morning quiet until ${tf.format(Date(Store.morningUntil))}"
             Store.windDown?.contains(Store.minuteOfDay(now)) == true ->
                 "Wind-down until ${tf.format(Date(Store.windDown!!.endsAfter(now)))}"
@@ -1223,7 +1223,7 @@ class HomeActivity : BaseActivity() {
             Store.focusActive(now) -> focusSheet()
             Store.locked(now) -> {
                 val at = DateFormat.getTimeFormat(this).format(Date(Store.lockUntil))
-                val s = Sheet(this, "Locked until $at", "Strict mode: you went back to Shorts or Reels after being stopped, so your pull apps rest until $at. " +
+                val s = Sheet(this, "Shorts and Reels locked until $at", "Strict mode: you went back to them after being stopped. The rest of YouTube and Instagram works as usual. " +
                     com.poshith.intent.core.Strict.nextLockWords(Store.stopsToday()))
                 com.poshith.intent.ui.nextThing()?.let { s.add(paragraph(it, 16f, P.text), 0) }
                 s.item("Strict mode settings") { openSettings("strict") }

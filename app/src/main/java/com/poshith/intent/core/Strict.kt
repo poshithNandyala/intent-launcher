@@ -12,7 +12,8 @@ import kotlin.math.roundToInt
  * is made earlier, when calm, and the moment of craving has no button to press:
  *  - No extensions in the moment. When today's Shorts and Reels (or minutes) are used, they're used.
  *  - Looser only from tomorrow. Stricter applies now; looser waits for the next day.
- *  - Coming back after being stopped locks the pull apps, longer each time (30 min, 2 h, the day).
+ *  - Going back to Shorts or Reels after being stopped locks them (only them: the rest of YouTube and
+ *    Instagram keeps working), longer each time: 30 min, 2 h, the day.
  *  - The one way past it today is an emergency code, shown once, kept somewhere out of reach.
  */
 object Strict {
@@ -34,13 +35,18 @@ object Strict {
         else -> maxOf(endOfDay, now + LOCK_THIRD_MS)
     }
 
-    /** What the next stop will cost, said up front ("Come back and it locks for 30 minutes."). */
+    /** What the next stop will cost, said up front ("Go back and they lock for 30 minutes."). */
     fun nextLockWords(nthSoFar: Int): String = when {
-        nthSoFar <= 0 -> "Come back today and it locks for 30 minutes."
-        nthSoFar == 1 -> "Come back again and it locks for 30 minutes."
-        nthSoFar == 2 -> "Come back again and it locks for 2 hours."
-        else -> "Come back again and it's locked for the rest of the day."
+        nthSoFar <= 1 -> "Go back to them and they lock for 30 minutes."
+        nthSoFar == 2 -> "Go back again and they lock for 2 hours."
+        else -> "Go back again and they're locked for the rest of the day."
     }
+
+    /** What's left of today's number after [count] ([allow] a day): never below zero. */
+    fun left(allow: Int, count: Int): Int = (allow - count).coerceAtLeast(0)
+
+    /** The emergency code's gift on a Shorts or Reels stop: this many more today, and the lock ends. */
+    const val EMERGENCY_MORE = 5
 
     /** A looser value chosen on one day takes over from [pendingDay] on ("yyyy-MM-dd" sorts by date). */
     fun due(today: String, pendingDay: String): Boolean = pendingDay.isNotEmpty() && today >= pendingDay

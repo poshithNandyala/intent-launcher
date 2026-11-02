@@ -48,7 +48,7 @@ data class Rule(
     }
 }
 
-enum class BlockReason { FOCUS, BREAK, BASIC, MORNING, BATCH, WIND_DOWN, BLOCKED_RULE, LOCKED }
+enum class BlockReason { FOCUS, BREAK, BASIC, MORNING, BATCH, WIND_DOWN, BLOCKED_RULE }
 
 sealed class Decision {
     object Open : Decision()
@@ -122,8 +122,6 @@ data class Situation(
     val protectedApp: Boolean = false,
     /** A session for this app ended a few minutes ago: the next pause is a little longer. */
     val recentlyEnded: Boolean = false,
-    /** Strict mode locked the pull apps (you came back after being stopped) until then. 0 = not locked. */
-    val lockedUntilWallMs: Long = 0,
 )
 
 object Policy {
@@ -140,8 +138,6 @@ object Policy {
             return Decision.Blocked(BlockReason.BREAK, s.focusUntilWallMs)
         }
         if (rule.mode == Mode.ESSENTIAL) return Decision.Open
-        // Locked after coming back to the feed: no session or rule opens it until then.
-        if (s.lockedUntilWallMs > s.nowWallMs) return Decision.Blocked(BlockReason.LOCKED, s.lockedUntilWallMs)
         // Focus and basic phone mean essentials only, even if a session was running before.
         if (s.focusUntilWallMs > s.nowWallMs) {
             val why = when { s.focusIsBasic -> BlockReason.BASIC; s.focusIsBreak -> BlockReason.BREAK; else -> BlockReason.FOCUS }

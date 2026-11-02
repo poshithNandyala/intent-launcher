@@ -266,7 +266,7 @@ if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; 
     record home-after-shorts
 
     # Strict mode: no Shorts a day, so stepping into Shorts is a stop (no "more" button); going back
-    # locks the pull apps; a third try meets Focus Guard's lock screen.
+    # locks Shorts (only Shorts); a third try is sent straight back out of the feed.
     adb shell input keyevent KEYCODE_HOME; sleep 1
     adb shell input swipe "$((W / 2))" "$((H / 2))" "$((W / 2))" "$((H / 2))" 900; sleep 1
     tap "Settings"; sleep 1
@@ -296,10 +296,9 @@ if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; 
     tap "Close YouTube"
     sleep 2
     timeout 30 adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
-    wait_top GateActivity 10
-    snap strict-locked-gate         # expected: Focus Guard's lock screen, not the app
-    expect_top GateActivity strict-locked-gate
-    adb shell input keyevent KEYCODE_BACK; sleep 2
+    sleep 5
+    snap strict-locked-bounce       # expected: out of the feed (Back), no pause screen, no gate
+    top | grep -q "ReelsActivity\|GateActivity\|revanced" && fail "strict-locked-bounce: still in Shorts or on a stop screen: $(top)"
 fi
 
 # Basic phone: only essentials on the home screen, and swiping up must not open search

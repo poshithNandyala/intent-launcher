@@ -418,17 +418,6 @@ class GateActivity : BaseActivity() {
                 line(col, "You blocked this app. You can change that in Settings (it takes a short wait), or unlock it once.", P.text2, 16f, 14)
                 actions(col, "Back", escape(phraseUnlock()))
             }
-            BlockReason.LOCKED -> {
-                // Strict mode: you came back after being stopped. A time, a reason, somewhere to go.
-                title(col, "LOCKED", "Until $until")
-                val n = Store.stopsToday()
-                line(col, "You went back to Shorts or Reels after being stopped${if (n > 1) " ($n times today)" else ""}. Your pull apps open again at $until.", P.text2, 16f, 14)
-                line(col, com.poshith.intent.core.Quotes.bluntFor(System.currentTimeMillis()), P.text, 17f, 18)
-                stopLines(col)
-                actions(col, "Back", escape(null, "It opens $label for 10 minutes and ends the lock.") {
-                    Store.lockUntil = 0; proceed(10, "Emergency code")
-                })
-            }
         }
     }
 

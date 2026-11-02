@@ -241,7 +241,7 @@ class OnboardingActivity : BaseActivity() {
         }
         card("gentle", "Gentle", null, "A short pause before your pull apps, and a question at the first Short or Reel. You decide each time.")
         card("strict", "Strict", "If pauses haven't worked for you",
-            "No “a few more” in the moment. A number of Shorts a day, then the app closes; go back and your pull apps lock. Rules only get looser from tomorrow, and an emergency code is the only way past it.")
+            "No “a few more” in the moment. A number of Shorts and Reels a day, then they close; go back and they lock (the rest of YouTube and Instagram still works). Rules only get looser from tomorrow, and an emergency code is the only way past it.")
         if (strictChoice == "strict") {
             body.addView(text("Shorts and Reels a day", 16f, P.text, Fonts.medium(this)).apply { setPadding(dp(8), dp(10), dp(8), dp(4)) }, lp())
             val f = Flow(this).apply { setPadding(dp(4), dp(4), dp(4), dp(4)) }

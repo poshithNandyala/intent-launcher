@@ -18,9 +18,7 @@ private fun sit(
     opens: Int = 0, session: Boolean = false, protected: Boolean = false, focusUntil: Long = 0,
     wd: Window? = null, strict: Boolean = false, minute: Int = 12 * 60, recent: Boolean = false,
     isBreak: Boolean = false, morningUntil: Long = 0, checkIns: List<Window> = emptyList(), basic: Boolean = false,
-    lockedUntil: Long = 0,
 ) = Situation(
-    lockedUntilWallMs = lockedUntil,
     checkIns = checkIns, focusIsBasic = basic,
     nowWallMs = 1_000_000L, minuteOfDay = minute, focusUntilWallMs = focusUntil, focusIsBreak = isBreak,
     morningUntilWallMs = morningUntil, windDown = wd,
@@ -289,9 +287,9 @@ fun main() {
     check("the code matches, typed loosely", Strict.matches(code.lowercase().replace("-", " "), stored))
     check("a wrong code doesn't", !Strict.matches("AAAA-AAAA", stored) && !Strict.matches("", stored) && !Strict.matches(code, ""))
     check("only a hash is kept", stored.length == 64 && !stored.contains(Strict.normalize(code)))
-    val locked = Policy.decide(Rule(Mode.MINDFUL), sit(lockedUntil = 2_000_000L, session = true))
-    check("locked beats a running session", locked is Decision.Blocked && locked.reason == BlockReason.LOCKED)
-    check("essentials never lock", Policy.decide(Rule(Mode.ESSENTIAL), sit(lockedUntil = 2_000_000L)) is Decision.Open)
+    check("what's left never goes below zero", Strict.left(5, 3) == 2 && Strict.left(5, 9) == 0 && Strict.left(0, 0) == 0)
+    check("the lock words say what's next", Strict.nextLockWords(1).contains("30 minutes") && Strict.nextLockWords(2).contains("2 hours") &&
+        Strict.nextLockWords(3).contains("rest of the day"))
     check("blunt lines are short and distinct", Quotes.blunt.all { it.length in 8..90 } && Quotes.blunt.toSet().size == Quotes.blunt.size)
 
     // --- lessons are complete

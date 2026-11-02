@@ -525,7 +525,7 @@ class SettingsActivity : BaseActivity() {
     private fun strictSummary(): String = when {
         !Store.strictActive() -> "Off · no extensions, looser only from tomorrow"
         Store.strictOffDay.isNotEmpty() -> "On until midnight"
-        Store.locked() -> "On · pull apps locked until ${timeLabelAt(Store.lockUntil)}"
+        Store.locked() -> "On · Shorts and Reels locked until ${timeLabelAt(Store.lockUntil)}"
         else -> "On · ${Store.reelsAllow} Shorts and Reels a day"
     }
 
@@ -560,7 +560,7 @@ class SettingsActivity : BaseActivity() {
             add(sectionTitle("Today"))
             val n = Store.stopsToday()
             add(paragraph(when {
-                Store.locked() -> "Stopped $n time${if (n == 1) "" else "s"} today. Pull apps are locked until ${timeLabelAt(Store.lockUntil)}."
+                Store.locked() -> "Stopped $n time${if (n == 1) "" else "s"} today. Shorts and Reels are locked until ${timeLabelAt(Store.lockUntil)}; the rest of YouTube and Instagram works."
                 n > 0 -> "Stopped $n time${if (n == 1) "" else "s"} today. ${com.poshith.intent.core.Strict.nextLockWords(n)}"
                 else -> "No stops yet today."
             }, 15f, P.text2))
@@ -571,6 +571,11 @@ class SettingsActivity : BaseActivity() {
             } else {
                 add(row("Keep Strict mode on", "It's set to switch off at midnight.", null) { Store.strictOffDay = ""; render() })
             }
+            if (Store.locked() && Store.strictCodeHash.isNotEmpty()) add(row("End today's lock", "With your emergency code: ${com.poshith.intent.core.Strict.EMERGENCY_MORE} more Shorts and Reels today", null) {
+                askEmergencyCode("It ends the lock and gives you ${com.poshith.intent.core.Strict.EMERGENCY_MORE} more today.") {
+                    Store.lockUntil = 0; Store.addReelsBonus(com.poshith.intent.core.Strict.EMERGENCY_MORE); render()
+                }
+            })
             if (Store.strictCodeHash.isNotEmpty()) add(row("Turn it off now", "With your emergency code", null) {
                 askEmergencyCode("It turns Strict mode off now.") { Store.strictOn = false; Store.strictOffDay = ""; render() }
             })
@@ -584,8 +589,8 @@ class SettingsActivity : BaseActivity() {
 
         fun point(s: String) = add(text("•  $s", 15f, P.text2).apply { setLineSpacing(0f, 1.25f); setPadding(dp(24), dp(5), dp(24), dp(5)) })
         add(sectionTitle("How it works"))
-        point("Shorts and Reels: a number a day (both together), no extensions. Past it, the app closes.")
-        point("Go back after being stopped and your pull apps lock: 30 minutes, then 2 hours, then the rest of the day.")
+        point("Shorts and Reels: a number a day (both together), no extensions. At the first swipe it says how many are left; at the last one it warns you; past it, they close.")
+        point("Go back to them after being stopped and they lock: 30 minutes, then 2 hours, then the rest of the day. Only Shorts and Reels: messages, search and long videos keep working.")
         point("Nothing to wait out: the daily limit, budget, rest and quiet hours have no unlock buttons.")
         point("Rules only get looser from tomorrow. Stricter applies now.")
         point("One way past it: an emergency code, shown once. Keep it where it's hard to reach.")

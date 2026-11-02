@@ -46,6 +46,8 @@ class ReelsGuardService : AccessibilityService() {
         fun leaveFeed(ctx: Context, pkg: String): Boolean {
             if (!Closer.reopen(ctx, pkg)) return false
             val s = instance ?: return true
+            // One Back, not two: while it's on its way, a locked feed isn't bounced as well.
+            s.leavingAt = SystemClock.elapsedRealtime()
             s.h.postDelayed({ s.performGlobalAction(GLOBAL_ACTION_BACK) }, 900)
             return true
         }
@@ -77,11 +79,6 @@ class ReelsGuardService : AccessibilityService() {
         if (e == null || !Store.reelsOn) return
         val pkg = e.packageName?.toString() ?: return
         val feed = Feed.of(pkg) ?: return
-        // Strict mode lock: YouTube and Instagram stay closed. (Focus Guard does this for every pull app
-        // when it's on; this covers them when it isn't.)
-        if (e.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED && !FocusGuardService.running && Store.locked()) {
-            stop(feed, pkg, counts = false); return
-        }
         when (e.eventType) {
             AccessibilityEvent.TYPE_VIEW_SCROLLED -> onScroll(e, feed, pkg)
             // The screen changed: look (at most every 300 ms) for the full-screen player, and whether
@@ -130,14 +127,21 @@ class ReelsGuardService : AccessibilityService() {
         }
         val entering = inFeed != feed
         inFeed = feed
-        // Strict mode: stepping into the feed with today's number used is a stop.
-        if (entering && Store.strictActive() && Stats.shortVideosToday() >= Store.reelsAllow) {
+        // Strict mode, stepping into Shorts or Reels: locked, so straight back out (the rest of the app
+        // stays); or today's number is used, so it's a stop.
+        if (Store.strictActive() && Store.locked()) {
+            lastPage = screen.page
+            bounce(feed, pkg)
+            return
+        }
+        if (entering && Store.strictActive() && Stats.shortVideosToday() >= Store.reelsAllowToday()) {
             lastPage = screen.page
             stop(feed, pkg, counts = true)
             return
         }
-        // "Off" means off: stepping into the feed at all gets the pause, not just the swipe.
-        if (entering && Store.reelsAllow == 0) {
+        // "Off" means off: stepping into the feed at all gets the pause, not just the swipe. (Strict mode
+        // counts against today's number instead, above.)
+        if (entering && !Store.strictActive() && Store.reelsAllow == 0) {
             lastPage = screen.page
             ask(feed, pkg, Sitting.Ask.START, count = false)
             return
@@ -199,12 +203,20 @@ class ReelsGuardService : AccessibilityService() {
             if (!(if (newVideo) s.newVideo(now) else s.swipe(now))) return
             s.ask()
         }
+        // Strict mode, locked: this one doesn't count, it's just back out of the feed.
+        if (Store.strictActive() && Store.locked()) { bounce(feed, pkg); return }
         Stats.shortVideo(feed)
-        // Strict mode: no questions, just today's number (Shorts and Reels together). Past it, a stop.
+        // Strict mode: no "more", just today's number (Shorts and Reels together). Said at the first swipe
+        // of a sitting, warned at the last one, and past it a stop.
         if (Store.strictActive()) {
             val today = Stats.shortVideosToday()
-            log("swipe counted (strict), $today of ${Store.reelsAllow} today")
-            if (today > Store.reelsAllow) stop(feed, pkg, counts = true)
+            val allow = Store.reelsAllowToday()
+            log("swipe counted (strict), $today of $allow today")
+            when {
+                today > allow -> stop(feed, pkg, counts = true)
+                ask == Sitting.Ask.START -> headsUp(feed, pkg, com.poshith.intent.core.Strict.left(allow, today))
+                today == allow -> toast("Last ${feed.one.lowercase()} today. The next swipe closes ${feed.many}.")
+            }
             return
         }
         log("swipe counted, ask=$ask")
@@ -212,8 +224,55 @@ class ReelsGuardService : AccessibilityService() {
     }
 
     /**
+     * Strict mode, the first swipe of a sitting: not a question about more, just what's left today (and
+     * what happens after). The app closes behind it, like any pause; "Watch" takes you back.
+     */
+    private fun headsUp(feed: Feed, pkg: String, left: Int) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - askedAt <= 1_500 || com.poshith.intent.guard.Calls.active(this)) return
+        askedAt = now
+        lastPage = null; twoBack = null
+        Closer.toHome(this)
+        Closer.silence(this, pkg)
+        try {
+            startActivity(ReelsActivity.headsUpIntent(this, feed, pkg, left).addFlags(Closer.OVER_APP or Intent.FLAG_ACTIVITY_NO_ANIMATION))
+        } catch (_: Exception) {}
+    }
+
+    private var bouncedAt = 0L
+    @Volatile private var leavingAt = 0L
+
+    /**
+     * Strict mode, Shorts or Reels locked: Android's Back takes you out of the feed and the rest of the app
+     * stays (messages, search, long videos). If you're still in the feed a moment later (an app that
+     * doesn't go back), the app closes and the lock screen says why.
+     */
+    private fun bounce(feed: Feed, pkg: String) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - bouncedAt < 1_200 || now - leavingAt < 2_000 || com.poshith.intent.guard.Calls.active(this)) return
+        bouncedAt = now
+        log("locked: out of ${feed.many}")
+        inFeed = null
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        val at = android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(Store.lockUntil))
+        toast("${feed.many} are locked until $at. The rest of ${feed.app} works.")
+        h.postDelayed({
+            if (Store.locked() && playerScreen(feed, pkg) != null) { askedAt = 0; stop(feed, pkg, counts = false) }
+        }, 1_500)
+    }
+
+    private var toastAt = 0L
+    private fun toast(msg: String) {
+        val now = SystemClock.elapsedRealtime()
+        if (now - toastAt < 2_000) return
+        toastAt = now
+        try { android.widget.Toast.makeText(this, msg, android.widget.Toast.LENGTH_LONG).show() } catch (_: Exception) {}
+    }
+
+    /**
      * Strict mode: close the app and say so. A stop that [counts] goes on today's tally, and from the
-     * second one the pull apps lock (30 minutes, then 2 hours, then the day).
+     * second one Shorts and Reels lock (30 minutes, then 2 hours, then the day). Only them: the rest of
+     * YouTube and Instagram keeps working.
      */
     private fun stop(feed: Feed, pkg: String, counts: Boolean) {
         val now = SystemClock.elapsedRealtime()

@@ -60,9 +60,18 @@ object Store {
     /** Strict mode stays on until midnight, then turns off. */
     fun strictOffTomorrow() { strictOffDay = dayKey(System.currentTimeMillis() + 86_400_000L) }
 
-    /** Pull apps locked (came back to the feed after being stopped) until then. */
+    /** Shorts and Reels locked (you went back after being stopped) until then. Only the feeds: the
+     *  rest of YouTube and Instagram keeps working. */
     var lockUntil: Long get() = long("lock_until", 0L); set(v) = putL("lock_until", v)
     fun locked(now: Long = System.currentTimeMillis()): Boolean = strictActive() && lockUntil > now
+
+    /** Strict mode: today's Shorts and Reels, with what the emergency code added today. */
+    fun reelsAllowToday(now: Long = System.currentTimeMillis()): Int =
+        reelsAllow + (if (str("reels_bonus_day") == dayKey(now)) int("reels_bonus", 0) else 0)
+    fun addReelsBonus(n: Int, now: Long = System.currentTimeMillis()) {
+        val cur = if (str("reels_bonus_day") == dayKey(now)) int("reels_bonus", 0) else 0
+        p.edit().putString("reels_bonus_day", dayKey(now)).putInt("reels_bonus", cur + n).apply()
+    }
 
     /** Strict stops today (Shorts or Reels past today's number): each one costs more. */
     fun stopsToday(now: Long = System.currentTimeMillis()): Int = if (str("stops_day") == dayKey(now)) int("stops", 0) else 0
