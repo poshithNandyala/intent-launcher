@@ -244,21 +244,29 @@ class ReelsGuardService : AccessibilityService() {
 
     /**
      * Strict mode, Shorts or Reels locked: Android's Back takes you out of the feed and the rest of the app
-     * stays (messages, search, long videos). If you're still in the feed a moment later (an app that
-     * doesn't go back), the app closes and the lock screen says why.
+     * stays (messages, search, long videos). Back goes to the window in focus, so it waits until the app
+     * is (just after it opens, the home screen may still have it), and tries twice. If you're still in
+     * the feed after that (an app that doesn't go back), the app closes and the lock screen says why.
      */
-    private fun bounce(feed: Feed, pkg: String) {
+    private fun bounce(feed: Feed, pkg: String, attempt: Int = 1) {
         val now = SystemClock.elapsedRealtime()
-        if (now - bouncedAt < 1_200 || now - leavingAt < 2_000 || com.poshith.intent.guard.Calls.active(this)) return
+        if (attempt == 1 && (now - bouncedAt < 1_200 || now - leavingAt < 2_000)) return
+        if (com.poshith.intent.guard.Calls.active(this) || !Store.locked()) return
         bouncedAt = now
-        log("locked: out of ${feed.many}")
+        val focused = try { rootInActiveWindow?.packageName?.toString() == pkg } catch (_: Exception) { false }
+        if (!focused && attempt < 4) { h.postDelayed({ bounce(feed, pkg, attempt + 1) }, 300); return }
+        log("locked: out of ${feed.many} (try $attempt)")
         inFeed = null
         performGlobalAction(GLOBAL_ACTION_BACK)
-        val at = android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(Store.lockUntil))
-        toast("${feed.many} are locked until $at. The rest of ${feed.app} works.")
+        if (attempt <= 4) {
+            val at = android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(Store.lockUntil))
+            toast("${feed.many} are locked until $at. The rest of ${feed.app} works.")
+        }
         h.postDelayed({
-            if (Store.locked() && playerScreen(feed, pkg) != null) { askedAt = 0; stop(feed, pkg, counts = false) }
-        }, 1_500)
+            if (!Store.locked() || playerScreen(feed, pkg) == null) return@postDelayed
+            if (attempt < 6) bounce(feed, pkg, 6) // one more Back
+            else { askedAt = 0; stop(feed, pkg, counts = false) }
+        }, 1_000)
     }
 
     private var toastAt = 0L
