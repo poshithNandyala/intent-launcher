@@ -1,0 +1,1 @@
+    topResumedActivity=ActivityRecord{39325671 u0 com.google.android.youtube/.app.honeycomb.Shell$HomeActivity t14}
