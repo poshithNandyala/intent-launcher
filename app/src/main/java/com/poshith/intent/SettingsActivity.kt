@@ -586,15 +586,7 @@ class SettingsActivity : BaseActivity() {
         header("Strict mode", "Limits you set while calm, held while you're craving. A pause with a “few more” button gets waited out; this one has no button to press.")
         val on = Store.strictActive()
 
-        // The two dials first: stricter applies now, looser from tomorrow.
-        add(sectionTitle("Shorts and Reels a day"))
-        add(chips(com.poshith.intent.core.Strict.SHORTS_CHOICES, Store.reelsAllow, { if (it == 0) "None" else "$it" }) { v -> pickReelsAllow(v) })
-        pendingNote("reels_allow") { if (it == 0) "none" else "$it a day" }
-        add(sectionTitle("Minutes a day for all apps you want to use less"))
-        add(chips(com.poshith.intent.core.Limits.BUDGET_CHOICES, Store.budgetMin, { if (it == 0) "No limit" else "$it min" }) { v -> pickBudget(v) })
-        pendingNote("budget_min") { if (it == 0) "no daily budget" else "$it min" }
-
-        // Then: turn it on, or how today is going.
+        // On: how today is going comes first, where you can see it.
         if (on) {
             add(sectionTitle("Today"))
             val n = Store.stopsToday()
@@ -603,7 +595,20 @@ class SettingsActivity : BaseActivity() {
                 n > 0 -> "Today's Shorts and Reels are used. ${com.poshith.intent.core.Strict.nextLockWords(n)}"
                 Store.reelsAllowToday() == 0 -> "Shorts and Reels are off today. The rest of YouTube and Instagram works."
                 else -> "About ${Stats.shortVideosToday()} of ${Store.reelsAllowToday()} Shorts and Reels so far today."
-            }, 15f, P.text2))
+            }, 15f, P.text))
+        }
+
+        // The two dials: stricter applies now, looser from tomorrow.
+        add(sectionTitle("Shorts and Reels a day"))
+        add(chips(com.poshith.intent.core.Strict.SHORTS_CHOICES, Store.reelsAllow, { if (it == 0) "None" else "$it" }) { v -> pickReelsAllow(v) })
+        pendingNote("reels_allow") { if (it == 0) "none" else "$it a day" }
+        add(sectionTitle("Minutes a day for all apps you want to use less"))
+        add(chips(com.poshith.intent.core.Limits.BUDGET_CHOICES, Store.budgetMin, { if (it == 0) "No limit" else "$it min" }) { v -> pickBudget(v) })
+        pendingNote("budget_min") { if (it == 0) "no daily budget" else "$it min" }
+
+        // Then: turn it on, or the ways out (tomorrow, or the emergency code).
+        if (on) {
+            add(sectionTitle("Strict mode"))
             if (Store.strictOffDay.isEmpty()) {
                 add(row("Turn off Strict mode", "It stays on until midnight, so tomorrow's you decides.", null) {
                     Store.strictOffTomorrow(); render()
