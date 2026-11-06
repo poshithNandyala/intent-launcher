@@ -232,7 +232,7 @@ class FocusGuardService : AccessibilityService() {
             // Its minutes stop counting while you're away, so its video shouldn't keep playing either
             // (in a little picture-in-picture window, say). Intent's own screens don't count as away.
             if (hadSession && next != GATE && next != SELF && next != CALL && !Calls.active(this) &&
-                Store.rule(prev).mode == com.poshith.intent.core.Mode.MINDFUL) Closer.silence(this, prev, broad = false)
+                Store.rule(prev).mode == com.poshith.intent.core.Mode.MINDFUL) Closer.silence(this, prev)
         }
         h.removeCallbacks(recheck)
         if (isApp(next)) {
@@ -317,7 +317,8 @@ class FocusGuardService : AccessibilityService() {
         timing = null
         // Time's up: the app closes. No screen asking to stay; a line on the home screen says why.
         val label = com.poshith.intent.data.Apps.labelFor(this, pkg)
-        Store.flash = if (minutes > 0) "Your $minutes minutes on $label are done." else "Your time on $label is done."
+        Store.flash = (if (minutes > 0) "Your $minutes minutes on $label ended, as you planned." else "Your time on $label ended, as you planned.") +
+            ((Store.todayStep() ?: Store.todayIntention())?.let { " Next: $it" } ?: "")
         // Closed means closed: a last screen it reports on its way out (or reopening it within a few
         // seconds) sends it home again, with no pause screen popping up.
         sentHome(pkg)
@@ -370,7 +371,16 @@ class FocusGuardService : AccessibilityService() {
         instance = null
         unboundAt = SystemClock.elapsedRealtime()
         val now = SystemClock.elapsedRealtime()
-        if (isApp(current)) Store.sessions { it.stop(current, now) }
+        // Going away in the middle of a session (switched off, or stopped by Android): nobody will see
+        // you leave the app now, so its minutes keep running on the clock and the backup reminder ends
+        // it on time. If Focus Guard comes back, it picks the timing up again and cancels the reminder.
+        val pkg = current
+        if (isApp(pkg)) {
+            val left = Store.sessions { b ->
+                if (!b.isActive(pkg, now)) null else { b.start(pkg, now); b.remainingMs(pkg, now) to (b[pkg]?.allowanceMs ?: 0L) }
+            }
+            if (left != null) Reminder.scheduleMs(this, pkg, left.first, (left.second / 60_000L).toInt())
+        }
         h.removeCallbacksAndMessages(null)
         try { unregisterReceiver(screen) } catch (_: Exception) {}
     }

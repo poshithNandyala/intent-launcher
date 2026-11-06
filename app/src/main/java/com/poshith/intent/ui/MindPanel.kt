@@ -19,8 +19,9 @@ import com.poshith.intent.data.Usage
 import java.util.Calendar
 
 /**
- * The Mind library (swipe right on the home screen). Short lessons from research, each with its
- * source and an honest evidence label. A finite page you can finish: it ends, on purpose.
+ * Practice (swipe right on the home screen): a one-minute reset, today's idea, your week, and a short
+ * library of lessons from research, each with its source and an honest evidence label. A finite page:
+ * it ends, on purpose. No progress bar, nothing to keep up with.
  */
 class MindPanel(private val a: BaseActivity) {
     private val root = FrameLayout(a)
@@ -70,30 +71,24 @@ class MindPanel(private val a: BaseActivity) {
 
     private fun build() {
         col.removeAllViews()
-        col.addView(a.text("Mind", 40f, P.text, Fonts.light(a)).apply { setPadding(a.dp(24), 0, a.dp(24), 0) })
-        col.addView(a.paragraph("One idea a day from the research. Guess first, then see what they found. A minute, then put the phone down."))
+        col.addView(a.text("Practice", 40f, P.text, Fonts.light(a)).apply { setPadding(a.dp(24), 0, a.dp(24), 0) })
+        col.addView(a.paragraph("A minute off the screen, and one idea from the research. Then put the phone down."))
 
-        // How far along you are, and a way to pick at random.
-        val read = Store.lessonsRead.count { id -> Lessons.all.any { it.id == id } }
-        val total = Lessons.all.size
-        val prog = a.hbox(Gravity.CENTER_VERTICAL).apply { setPadding(a.dp(24), a.dp(6), a.dp(24), a.dp(4)) }
-        val bar = a.hbox().apply { background = rounded(P.surface2, a.dp(3).toFloat()); clipToOutline = true }
-        if (read > 0) bar.addView(View(a).apply { background = rounded(P.accent, a.dp(3).toFloat()) }, LinearLayout.LayoutParams(0, a.dp(5), read.toFloat()))
-        if (read < total) bar.addView(View(a), LinearLayout.LayoutParams(0, a.dp(5), (total - read).toFloat()))
-        prog.addView(bar, LinearLayout.LayoutParams(0, a.dp(5), 1f))
-        prog.addView(a.text("$read of $total", 13.5f, P.text2, Fonts.medium(a)).apply { setPadding(a.dp(14), 0, 0, 0) })
-        col.addView(prog, lp())
-        col.addView(Chip(a, "Surprise me").apply {
-            setOnClickListener {
-                it.tick()
-                val unread = Lessons.all.filter { l -> l.id !in Store.lessonsRead }
-                openLesson((unread.ifEmpty { Lessons.all }).random())
-            }
-        }, lp(ViewGroup.LayoutParams.WRAP_CONTENT).apply { leftMargin = a.dp(24); topMargin = a.dp(10) })
+        // A one-minute reset, your way (breathing is only one of the options).
+        val reset = a.vbox().apply {
+            setPadding(a.dp(20), a.dp(18), a.dp(20), a.dp(18))
+            isClickable = true
+            setOnClickListener { it.tick(); a.resetSheet() }
+        }
+        reset.addView(a.text("A one-minute reset", 18f, P.text, Fonts.medium(a)))
+        reset.addView(a.text("Breathe, look far away, feel your feet, or put the phone down. Intent keeps the time.", 15f, P.text2).apply {
+            setLineSpacing(0f, 1.2f); setPadding(0, a.dp(6), 0, 0)
+        })
+        col.addView(card(reset, tappable = true), lp().apply { leftMargin = a.dp(16); rightMargin = a.dp(16); topMargin = a.dp(14) })
 
         // Today's idea, as a small puzzle.
         val today = Lessons.forDay(System.currentTimeMillis() / 86_400_000L)
-        col.addView(a.sectionTitle("Today · one minute"))
+        col.addView(a.sectionTitle("Today's idea"))
         col.addView(card(lessonCard(today)), lp().apply { leftMargin = a.dp(16); rightMargin = a.dp(16) })
 
         // This week, from Intent's own counters (and Android's usage data if you allowed it).
@@ -105,14 +100,13 @@ class MindPanel(private val a: BaseActivity) {
         val planned = days.sumOf { it.plannedMin }
         val checking = days.sumOf { it.justChecking }
         val videos = days.sumOf { it.shorts + it.reels }
-        week.addView(a.text(if (notNow == 0) "No “Not now” yet this week. The first one is the hardest." else "You chose “Not now” $notNow time${if (notNow == 1) "" else "s"} this week.", 17f, P.text, Fonts.medium(a)))
-        week.addView(line("$sessions mindful session${if (sessions == 1) "" else "s"} · $planned min planned" + if (checking > 0) " · noticed “just checking” $checking×" else ""))
-        if (videos > 0) week.addView(line("$videos short video${if (videos == 1) "" else "s"} swiped to this week"))
+        week.addView(a.text(if (notNow == 0) "No “Not now” yet this week." else "You chose “Not now” $notNow time${if (notNow == 1) "" else "s"} this week.", 17f, P.text, Fonts.medium(a)))
+        week.addView(line("$sessions session${if (sessions == 1) "" else "s"} · $planned min planned" + if (checking > 0) " · noticed “just checking” $checking×" else ""))
+        if (videos > 0) week.addView(line("About $videos Shorts and Reels this week (estimated from scrolling)"))
         val usageLine = line("")
         usageLine.visibility = View.GONE
         week.addView(usageLine)
-        val n = Store.dayNumber()
-        week.addView(line("Day $n with Intent. New habits take about two months to feel automatic, so be patient with yourself.", P.text3))
+        week.addView(line("New habits often take about two months to feel automatic, and a missed day doesn't undo them.", P.text2))
         col.addView(card(week), lp().apply { leftMargin = a.dp(16); rightMargin = a.dp(16) })
         Bg.run {
             val c = Calendar.getInstance()
@@ -122,14 +116,14 @@ class MindPanel(private val a: BaseActivity) {
             val mindful = Store.packagesWithMode(Mode.MINDFUL)
             val perDay = u.msFor(mindful) / 7
             val text = (if (u.unlocksKnown) "About ${u.unlocks / 7} unlocks a day" else "") +
-                (if (mindful.isNotEmpty()) (if (u.unlocksKnown) " · " else "") + "${Usage.formatMinutes(perDay)} a day in mindful apps" else "")
+                (if (mindful.isNotEmpty()) (if (u.unlocksKnown) " · " else "") + "${Usage.formatMinutes(perDay)} a day in the apps you want to use less" else "")
             if (text.isNotBlank()) a.runOnUiThread { if (!a.isDestroyed) { usageLine.text = text; usageLine.visibility = View.VISIBLE } }
         }
 
-        // The library: tap any idea to guess and read it.
+        // The library: tap any idea to guess and read it. No progress bar: it's there when you want it.
         for (t in Topic.values()) {
             col.addView(a.sectionTitle(t.title))
-            col.addView(a.paragraph(t.blurb, 14.5f, P.text3))
+            col.addView(a.paragraph(t.blurb, 14.5f, P.text2))
             for (l in Lessons.byTopic(t)) col.addView(lessonRow(l), lp())
         }
 
@@ -137,8 +131,8 @@ class MindPanel(private val a: BaseActivity) {
         col.addView(a.text("That's everything.\nNow go do your one thing.", 20f, P.text2, Fonts.light(a)).apply {
             gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f); setPadding(a.dp(24), a.dp(24), a.dp(24), a.dp(8))
         }, lp())
-        col.addView(a.text("$total ideas · each with its source and how strong the evidence is", 13f, P.text3).apply {
-            gravity = Gravity.CENTER; setPadding(a.dp(24), 0, a.dp(24), 0)
+        col.addView(a.text("Each idea has its source and how strong the evidence is. These are ideas, not treatment: if your mood is low for weeks, or you can't cut down despite trying, a doctor or therapist can help.", 13.5f, P.text2).apply {
+            gravity = Gravity.CENTER; setLineSpacing(0f, 1.25f); setPadding(a.dp(24), a.dp(4), a.dp(24), 0)
         }, lp())
     }
 
@@ -146,15 +140,16 @@ class MindPanel(private val a: BaseActivity) {
         setLineSpacing(0f, 1.2f); setPadding(0, a.dp(8), 0, 0)
     }
 
-    private fun card(content: View): View = FrameLayout(a).apply {
-        background = rounded(P.surface, a.dp(20).toFloat())
+    private fun card(content: View, tappable: Boolean = false): View = FrameLayout(a).apply {
+        val r = a.dp(20).toFloat()
+        background = if (tappable) ripple(rounded(P.surface, r), r) else rounded(P.surface, r)
+        if (tappable) { content.background = ripple(null, r) }
         addView(content)
     }
 
     private fun evidenceColor(e: Evidence) = when (e) {
         Evidence.STRONG, Evidence.GOOD -> P.accent
-        Evidence.EARLY, Evidence.STORY -> P.text2
-        Evidence.MIXED -> P.warn
+        Evidence.EARLY, Evidence.STORY, Evidence.MIXED -> P.text2
     }
 
     /**
@@ -174,7 +169,7 @@ class MindPanel(private val a: BaseActivity) {
             }
             reveal.addView(a.text(l.title, 19f, P.text, Fonts.medium(a)).apply { setLineSpacing(0f, 1.15f); setPadding(0, a.dp(10), 0, 0) })
             reveal.addView(a.text(l.body, 16f, P.text).apply { setLineSpacing(0f, 1.32f); setPadding(0, a.dp(10), 0, 0) })
-            reveal.addView(a.text("TRY THIS", 11.5f, P.text3, Fonts.medium(a)).apply { letterSpacing = 0.1f; setPadding(0, a.dp(16), 0, 0) })
+            reveal.addView(a.text("TRY THIS", 11.5f, P.text2, Fonts.medium(a)).apply { letterSpacing = 0.1f; setPadding(0, a.dp(16), 0, 0) })
             reveal.addView(a.text(l.tryThis, 16f, P.accent).apply { setLineSpacing(0f, 1.25f); setPadding(0, a.dp(4), 0, 0) })
             val trying = Chip(a, "I'll try it").apply {
                 on = l.id in Store.lessonsTrying
@@ -188,7 +183,7 @@ class MindPanel(private val a: BaseActivity) {
             }
             reveal.addView(trying, lp(ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = a.dp(12) })
             reveal.addView(a.text("${l.evidence.label} · ${l.source}", 13f, evidenceColor(l.evidence)).apply {
-                alpha = 0.9f; setLineSpacing(0f, 1.2f); setPadding(0, a.dp(14), 0, 0)
+                setLineSpacing(0f, 1.2f); setPadding(0, a.dp(14), 0, 0)
             })
         }
 
@@ -209,8 +204,7 @@ class MindPanel(private val a: BaseActivity) {
             for ((c, i) in chips) {
                 c.isClickable = false
                 c.on = i == g.answer
-                c.alpha = if (i == g.answer || i == chosen) 1f else 0.45f
-                if (chosen != null && i == chosen && i != g.answer) c.setTextColor(P.warn)
+                c.alpha = if (i == g.answer || i == chosen) 1f else 0.6f
             }
             fillReveal(chosen)
             if (animate && a.animationsOn()) {
@@ -228,7 +222,7 @@ class MindPanel(private val a: BaseActivity) {
         return v
     }
 
-    /** A lesson on its own, as a card that slides up: from the library or "Surprise me". */
+    /** A lesson on its own, as a card that slides up from the library. */
     private fun openLesson(l: Lesson) {
         val s = Sheet(a, null)
         s.content.addView(lessonCard(l), lp())
@@ -247,7 +241,7 @@ class MindPanel(private val a: BaseActivity) {
         }
         head.addView(a.text(l.title, 16.5f, if (read) P.text2 else P.text).apply { setLineSpacing(0f, 1.15f) }, lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         head.addView(a.text(if (read) "Read" else l.evidence.label.substringBefore(' '), 12.5f,
-            if (read) P.text3 else evidenceColor(l.evidence), Fonts.medium(a)).apply { setPadding(a.dp(12), 0, 0, 0) })
+            if (read) P.text2 else evidenceColor(l.evidence), Fonts.medium(a)).apply { setPadding(a.dp(12), 0, 0, 0) })
         return head
     }
 }

@@ -13,11 +13,21 @@ crashed() { [ -s "$OUT/crash.txt" ]; }
 intent_crashes() {
     adb logcat -d -b crash 2>/dev/null | awk '/FATAL EXCEPTION/{keep=0} /Process: com.poshith.intent/{keep=1} {buf[NR]=$0} keep{print}' > "$OUT/crash.txt"
 }
+# A system "isn't responding" dialog over the screen: answer it, and keep the evidence (anr.txt) so a
+# failure caused by another app's ANR is told apart from one of Intent's own.
+answer_anr() { # step
+    local said
+    said=$(python3 scripts/ui.py dismiss 2>/dev/null) || return 0
+    echo "$1: $said" >> "$OUT/anr.txt"
+    adb logcat -d 2>/dev/null | grep -E "ANR in |Application Not Responding" | tail -3 >> "$OUT/anr.txt"
+    sleep 1
+}
 record() { # name
     n=$((n + 1))
     local name
     name=$(printf "%02d-%s" "$n" "$1")
     sleep 2
+    answer_anr "$1"
     adb exec-out screencap -p > "$OUT/$name.png" 2>/dev/null
     python3 scripts/ui.py texts > "$OUT/$name.txt" 2>&1
     intent_crashes
@@ -31,7 +41,17 @@ expect_top() { # activity step: that activity is in front now
 }
 expect_text() { # text step: the step's screen text (from record) contains it
     local f; f=$(ls "$OUT"/*-"$2".txt 2>/dev/null | tail -1)
-    grep -qF "$1" "$f" 2>/dev/null || fail "$2: expected \"$1\" on screen"
+    grep -qF "$1" "$f" 2>/dev/null || { fail "$2: expected \"$1\" on screen"; return 1; }
+}
+# Setup that goes wrong makes every later step fail for the same reason: stop there, with the evidence.
+stop_early() { # why
+    fail "stopped early: $1"
+    adb logcat -d -v time > "$OUT/logcat.txt" 2>&1
+    adb logcat -d 2>/dev/null | grep -E "ANR in |Application Not Responding" >> "$OUT/anr.txt"
+    intent_crashes
+    grep -q "com.poshith.intent" "$OUT/anr.txt" 2>/dev/null && fail "Intent itself stopped responding (anr.txt)"
+    echo "== $(wc -l < "$OUT/failures.txt") check(s) failed:"; cat "$OUT/failures.txt"
+    exit 1
 }
 shade_closed() { # step: the notification shade isn't open
     local focus; focus=$(adb shell dumpsys window | grep -m1 mCurrentFocus)
@@ -72,6 +92,11 @@ adb shell getprop ro.build.version.release > "$OUT/android.txt"
 for _ in $(seq 1 60); do adb shell dumpsys activity | grep -q "mBooted=true\|BOOT_COMPLETED\|mBootAnimationComplete=true" && break; sleep 2; done
 [ "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" -lt 29 ] && sleep 30
 [ "${NIGHT:-no}" = "yes" ] && adb shell cmd uimode night yes > /dev/null 2>&1
+# The emulator's own Pixel Launcher (API 34+) stops responding under the software GPU and puts its
+# dialog over everything; Intent doesn't need it (it becomes the only home app). Test setup only.
+if [ "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" -ge 34 ] && adb shell pm list packages | grep -q "package:com.google.android.apps.nexuslauncher"; then
+    adb shell pm disable-user --user 0 com.google.android.apps.nexuslauncher > "$OUT/launcher-off.txt" 2>&1
+fi
 adb install -r -g "$APK" > "$OUT/install.txt" 2>&1
 # The real break silences notifications (Do Not Disturb access) and sets aside the ones already
 # showing (Notification access); grant both as a person would.
@@ -97,27 +122,30 @@ tap "Next";               record plan
 # setup must come back on the same page, not from the start.
 timeout 30 adb shell am start -n $PKG/.HomeActivity > /dev/null 2>&1; sleep 4
 record setup-after-home
-expect_text "When you feel the pull" setup-after-home
+expect_text "When you feel the pull" setup-after-home || stop_early "setup didn't come back on its page after the home screen came forward"
 adb shell am force-stop $PKG; sleep 1
 timeout 30 adb shell am start -n $PKG/.HomeActivity > /dev/null 2>&1; sleep 4
 record setup-after-restart
-expect_text "When you feel the pull" setup-after-restart
+expect_text "When you feel the pull" setup-after-restart || stop_early "setup didn't come back on its page after a restart"
 tap "Next";               record strict-choice
 tap "Gentle"              # the Shorts test below uses the gentle pause; Strict gets its own test
 tap "Next";               record protect
-expect_text "Turn on your protection" protect
+expect_text "Turn on what you need" protect
 tap "Skip for now";       record quiet
 tap "Next";               record done
 tap "Start using Intent"; record home-role
 adb shell input keyevent KEYCODE_BACK
 timeout 30 adb shell am start -n $PKG/.HomeActivity > /dev/null 2>&1; sleep 4
 record home
+top | grep -q HomeActivity || stop_early "setup never reached the home screen ($(top | sed 's/.*{//; s/}.*//'))"
+expect_text "What matters today?" home    # the day's plan, asked once, on the home screen
 
 # Main gestures
 swipe 50 80 50 25;  record library
 type_text "set"; record search
 adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK; sleep 1
-swipe 15 50 85 50;  record mind
+swipe 15 50 85 50;  record practice
+expect_text "A one-minute reset" practice
 adb shell input keyevent KEYCODE_BACK
 adb shell input swipe "$((W / 2))" "$((H / 2))" "$((W / 2))" "$((H / 2))" 900
 record long-press
@@ -257,9 +285,9 @@ if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; 
     tap "Watch 5 more"
     sleep 4 # the guard comes back after the screen read
     for _ in $(seq 1 6); do flick; sleep 2.5; done
-    snap shorts-after-five         # expected: ReelsActivity again, "That's 7 in a row"
+    snap shorts-after-five         # expected: ReelsActivity again, "That's about 7 in a row"
     record shorts-pause-again
-    expect_text "That's 7 in a row" shorts-pause-again
+    expect_text "That's about 7 in a row" shorts-pause-again
     tap "Close YouTube"
     snap shorts-closed             # expected: Intent's home
     expect_top HomeActivity shorts-closed
@@ -276,7 +304,7 @@ if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; 
     tap "Turn on Strict mode";     record strict-code
     tap "I wrote it down. Turn on Strict mode"
     record strict-on
-    expect_text "No stops yet today" strict-on
+    expect_text "Shorts and Reels are off today" strict-on
     adb shell input keyevent KEYCODE_HOME; sleep 2
     timeout 30 adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
     sleep 4
@@ -289,10 +317,10 @@ if adb shell pm list packages | grep -q "package:app.revanced.android.youtube"; 
     sleep 2
     timeout 30 adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
     sleep 4
-    snap strict-second-stop         # expected: closed and locked for 30 minutes
+    snap strict-second-stop         # expected: closed, and honest about when: tomorrow, not "in 30 minutes"
     expect_top ReelsActivity strict-second-stop
     record strict-locked
-    expect_text "locked until" strict-locked
+    expect_text "Available again tomorrow" strict-locked
     tap "Close YouTube"
     sleep 2
     timeout 30 adb shell am start -W -n app.revanced.android.youtube/.Feed > /dev/null 2>&1
@@ -311,6 +339,8 @@ swipe 50 80 50 25
 record basic-swipe-up
 
 adb logcat -d -v time > "$OUT/logcat.txt" 2>&1
+grep -E "ANR in |Application Not Responding" "$OUT/logcat.txt" >> "$OUT/anr.txt"
+grep -q "com.poshith.intent" "$OUT/anr.txt" 2>/dev/null && fail "Intent stopped responding at some point (anr.txt)"
 if crashed; then echo "CRASH:"; cat "$OUT/crash.txt"; fail "Intent crashed (crash.txt)"; fi
 
 # The safety net: a forced crash must show Intent's own error screen, not just close.

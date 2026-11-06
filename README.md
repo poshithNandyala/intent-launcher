@@ -1,6 +1,6 @@
 <h1 align="center">Intent</h1>
 <p align="center"><b>Open your phone on purpose.</b><br>
-An Android home screen that keeps your tools one tap away and puts a short, kind pause in front of the apps that pull you in.</p>
+An Android home screen that keeps your tools one tap away and puts a short, kind pause in front of the apps you want to use less.</p>
 
 <p align="center">
   <a href="https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.5.1.apk"><b>⬇ Download the APK</b></a> ·
@@ -10,78 +10,86 @@ An Android home screen that keeps your tools one tap away and puts a short, kind
 
 ---
 
-Most of the time we don't pick up our phones because something needs us. In a study that filmed people's real days, **89% of phone interactions were started by the person, not by a notification** ([Heitmayer & Lahlou, 2021](docs/RESEARCH.md#habits)). We check about **85 times a day, twice as often as we think** ([Andrews et al., 2015](docs/RESEARCH.md#habits)). And a pause of just a few seconds, with an easy way out, cut app openings by **57%** ([Grüning et al., PNAS 2023](docs/RESEARCH.md#what-works)).
+Most of the time we don't pick up our phones because something needs us. In a study that filmed people's real days, **89% of phone interactions were started by the person, not by a notification** ([Heitmayer & Lahlou, 2021](docs/RESEARCH.md#habits)). We check about **85 times a day, twice as often as we think** ([Andrews et al., 2015](docs/RESEARCH.md#habits)). And limits people set for themselves while calm **cut their social media time by about a sixth** in a large experiment ([Allcott, Gentzkow & Song, 2022](docs/RESEARCH.md#habits)).
 
-Intent is built around that moment of reaching. It doesn't fight you or shame you. It makes what you meant to do easy, and what you didn't mean to do a little slower.
+Intent is built around that moment of reaching. It doesn't fight you or shame you. It makes what you meant to do easy, and what you didn't mean to do a little slower. It makes no medical claims: it can't "reset dopamine", heal a brain or cure anything.
 
 ## What it does
 
 | | |
 |---|---|
-| **Text home screen** | Time, date, today's one thing, and up to 7 apps you chose, written as words on your own wallpaper (the words turn light or dark to stay readable; dim it or go plain if you like). No icons, no badges, no red dots. |
+| **Text home screen** | Time, date, today's one thing, and up to 7 apps you chose, written as words on a plain, calm background (or your wallpaper, with the words turning light or dark to stay readable). No icons, no badges, no red dots. |
 | **Find anything by typing** | Swipe up and type. Nothing to browse, so you open what you came for. |
-| **The pause** | Apps you mark *mindful* (Instagram, YouTube…) open after one slow breath, a question about how you feel and what it's for, and a session length you pick. **"Not now" is always the biggest button.** |
-| **Sessions that end** | With Focus Guard on, Intent counts only the minutes the app is actually in front (a call in between doesn't count), says "1 minute left" a minute before, and when you reach your number it closes the app. No pop-up asking to stay: you're back on your home screen with a line saying so, and nothing keeps playing (no picture-in-picture window). |
-| **The pause grows** | Every session after the second one today waits 2 s longer (max 20 s). You can turn this off. |
-| **Strict mode** | For when pauses get waited out. Limits you choose while calm, held while you're craving: a number of Shorts and Reels a day with no "few more" button (it says how many are left at the first swipe and warns at the last one; past it, they close); go back after being stopped and Shorts and Reels lock for 30 minutes, then 2 hours, then the rest of the day (only them: messages, search and long videos keep working); the daily limit, budget, rest and quiet hours lose their unlock buttons; and rules only get looser from tomorrow. The one way past it is an emergency code, shown once, that you keep somewhere hard to reach. Every stop says what's next (your one thing or your plan), who you said you are, and what today's scrolling costs in waking days a year. Chosen in setup (Gentle or Strict), or in Settings. |
-| **One budget, and a short rest** | Optionally, one daily budget of minutes for all your mindful apps together: every session takes its minutes from it, so moving from Instagram to YouTube doesn't start over. And after 3 sessions in 10 minutes, mindful apps rest for 5 minutes ("Put the phone down" is the big button). |
+| **The pause** | *Apps you want to use less* (Instagram, YouTube…) open after one slow breath (6 s), then the minutes you pick. **"Not now" is always the biggest button.** "What's it for?" comes only when it matters (the 4th open today, or straight back after a session); "How are you feeling?" only if you turn it on. With reduce-motion on, the circle stays still and just says "Breathe naturally". |
+| **Sessions that end** | With Focus Guard on, Intent counts only the minutes the app is actually in front (a call in between doesn't count), says "1 minute left" a minute before, and when you reach your number it closes the app and says "Your 5 minutes ended, as you planned. Next: …". If Focus Guard stops in the middle of a session, the minutes keep running on the clock and a quiet reminder ends it instead. |
+| **A longer pause, if you want it** | Optionally the pause grows by 2 s with each open after the second today (max 20 s). Off by default. |
+| **Strict mode** | For when pauses get waited out. Limits you choose while calm, held while you're craving: a number of Shorts and Reels a day with no "few more" button (it says how many are left at the first swipe; past the last one they close until tomorrow, and only them: messages, search and long videos keep working); the daily limit, budget, rest and quiet hours lose their unlock buttons; morning quiet and wind-down end a running session; and rules only get looser from tomorrow, wherever you change them (a schedule moved, a budget raised). The one way past it is an emergency code, shown once. Stop screens say one thing plainly ("That's today's Shorts. Available again tomorrow.") and what you planned to do next. |
+| **One budget, and a short rest** | Optionally, one daily budget of minutes for all the apps you want to use less: every session takes its minutes from it, so moving from Instagram to YouTube doesn't start over. And after 3 sessions in 10 minutes, they rest for 5 minutes ("Put the phone down" is the big button). |
 | **Essentials never wait** | Phone, messages, OTPs, UPI, maps, camera, authenticator, the clock and keyboards are never paused. Wi-Fi, Bluetooth, hotspot and mobile data are untouched. |
-| **A real break** | The strictest mode: your home screen goes dark with just the time left (hours and minutes, nothing ticking), and only calls get through. Every other notification is silenced and set aside until the break ends (then they all come back), and the notification shade won't open. Needs Notification access and Focus Guard, one switch each. 15 min to 1 h 30, or type your own. |
-| **Focus and basic phone** | Deep work (25/50/90 min) with your essentials, or *basic phone*: only your essentials, with no search at all, until you turn it off. Ending anything early means holding a button for 3 s. |
-| **Morning quiet** | Mindful apps rest for the first 15 minutes after your first unlock of the morning, so your first thoughts are your own. |
-| **Wind-down** | At night, mindful apps rest (optionally all non-essentials). |
-| **Check-in times** | Email or work chat can open only in your check-in windows (12:30 and 18:30 by default). |
-| **"What did you pick up your phone for?"** | A quiet card right after you unlock. "A call or message" shows Phone, Messages and WhatsApp; "Just checking" locks the phone; no answer in 15 s locks it too (with Focus Guard). |
-| **Shorts and Reels** | The one you open is fine; the endless swipe is the trap. The pause there is blunt on purpose ("You're not relaxing. You're numbing."): hard on the habit, never on you. With the optional Shorts & Reels guard, the first swipe through YouTube Shorts or Instagram Reels closes the app (nothing keeps playing) and shows a pause: today's count, a line worth reading, a big "Close YouTube", "Leave Shorts" to go back to the rest of the app, and a small "Watch 5 more" (or none, if you'd rather the swipe always stops you). Each "more" waits a little longer. The count shows on your home screen too. |
-| **A line worth stopping for** | A quote under the date, on a soft pane so it reads on any wallpaper: new every 30 seconds, or one a day if you prefer. About 95 of them, mostly from books that have lasted (Seneca, Marcus Aurelius, Epictetus, Thoreau, Emerson, the Bhagavad Gita, Kabir, Tolstoy) and a few modern ones on doing the work, each attribution checked. Another waits on the pause, the break and the Shorts pause. Tap it for the next; turn it off in Settings. |
-| **Screen time you can feel** | Today's screen time under the date. Time in the apps that pull you grows heavier as it climbs; calls, maps and work are never singled out. |
-| **Rules you set while calm** | Making an app harder to open is instant. Making it easier waits 20 s (adjustable). Apps you make mindful later get the same rule as the rest. Nothing ever stops you from changing a rule, switching launchers or uninstalling. |
-| **Honest about what's working** | Settings shows each switch as On, Off or Stopped: some phones stop accessibility services and leave the switch on, and then nothing works. Intent says so and how to fix it. |
-| **The Mind library** | Swipe right: 56 short ideas from research, each a little puzzle first ("Out of 10 pickups, how many are your own idea?"), then the answer, a thing to try, and its source with an honest evidence label. Covers the science and how people like Warren Buffett, Bill Gates, Pavel Durov and Christopher Nolan use (or don't use) their phones. Shows how many you've read; "Surprise me" picks one; today's question also waits in the Today sheet until you guess it. It ends, on purpose. |
-| **Quiet notifications** | A guided checklist to switch off alerts from anything that isn't a person. |
-| **Honest numbers** | Unlocks today and minutes in mindful apps (with usage access), and how often you chose "Not now". No streaks to lose. |
+| **A real break** | Your home screen goes dark with just the time left (hours and minutes, nothing ticking), and only calls get through. Every other notification is set aside until the break ends (then they all come back), and the notification shade won't open. A one-minute reset is there if the break feels long. |
+| **Focus and basic phone** | Deep work (25/50/90 min) with your essentials, or *basic phone*: only your essentials, with no search at all, until you turn it off. |
+| **Morning quiet** | The apps you want to use less rest for the first 15 minutes after your first unlock of the morning. |
+| **Wind-down** | At night, the apps you want to use less rest, and so do check-in apps. Gentle: a session that's running can finish. *Firm wind-down* pauses normal apps too and ends a running session when it starts; a session you unlocked on purpose keeps its minutes. |
+| **Check-in times** | Email or work chat open only in your check-in windows (12:30 and 18:30 by default). Optionally their notifications wait for the next check-in too: a few batches a day instead of a stream (calls and alarms are never held). |
+| **What matters today** | Optional, on the home screen: one thing for the day, the first small step and when, and if you like what's likely to get in the way with an if-then plan for it (the WOOP method). Yesterday's isn't passed off as today's: keep it, change it or clear it. Your day can start when you wake, for shift work. |
+| **Evening look-back** | Optional: did it happen, what helped, what pulled you away, tomorrow's first step. A slip gets a kind word and a next step, never a scold. Kept only on the phone; export or delete them any time. No streaks, no scores. |
+| **Practice** | Swipe right: a one-minute reset (breathe naturally, long sighs, look far away, feel your feet, or put the phone down), today's idea, your week, and 69 short lessons from research, each a little puzzle first, with its source and an honest evidence label. Includes myths, checked: manifesting, "dopamine detox", switching off your "default mode network", "I am…" affirmations. It ends, on purpose, and says when to see a doctor or therapist instead. |
+| **Shorts and Reels** (experimental) | The one you open is fine; the endless swipe is the trap. With the optional Shorts & Reels guard, the first swipe through YouTube Shorts or Instagram Reels closes the app and asks "Was that the one you came for?", with a big "Close YouTube", a way back into the rest of the app, and (in Gentle mode) a small "Watch 5 more" that waits a little longer each time. Counts are estimates ("about 12 today"). Blunt lines ("Close it. You already know.") only if you turn them on. Whole-app sessions are the dependable part. |
+| **A line worth stopping for** | One quote a day under the date: about 90, mostly from books that have lasted (Seneca, Marcus Aurelius, Epictetus, Thoreau, Emerson, the Bhagavad Gita, Kabir, Tolstoy, Twain), each attribution checked, plus a few of Intent's own drawn from the research. Tap it to see where it's from, pin it for a week, or turn quotes off. No fear about how short life is, no hustle. |
+| **Screen time, when you ask** | Tap the screen time under the date for today's numbers. What a year of days like today adds up to lives only there. |
+| **Rules you set while calm** | Making an app harder to open is instant. Making it easier waits 20 s (adjustable), from every page. Nothing ever stops you from changing a rule, switching launchers or uninstalling. |
+| **Honest about what's working** | Settings shows each switch as On, Off or Stopped: some phones stop accessibility services and leave the switch on. The home screen mentions only the switches your rules depend on. |
+| **Easy to read and tap** | Every text color meets WCAG AA contrast, everything you can tap is at least 48 dp, and nothing moves forever on screen. |
 
-**Gestures:** swipe up to search · swipe right for Mind · swipe down for notifications and quick settings · long-press to edit · double-tap to lock (with Focus Guard) · tap the clock for alarms and the date for calendar.
+**Gestures:** swipe up to search · swipe right for Practice · swipe down for notifications and quick settings · long-press to edit · double-tap to lock (with Focus Guard) · tap the clock for alarms and the date for calendar.
 
 ## Install
 
 1. Download **[Intent-1.5.1.apk](https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.5.1.apk)** on your phone and open it. Allow "install unknown apps" for your browser if Android asks.
    SHA-256 `cfb1974539cd135eaac2f3ca0f989938b1410bfeadc8cf95e8c5bdf3a9f3ef6d`
-   Updating? It installs over 1.4.x, 1.2.0 and older. The 1.3.0 build from 1 November was signed with a different key: uninstall that one first.
-2. Open Intent and follow the two-minute setup: choose your essentials, the apps that pull you in (only Instagram comes ticked), your if-then plan, and then turn on the protections one by one. If Android restarts setup when you pick Intent as your home app, it picks up where you were.
+   Updating? It installs over 1.4.x, 1.5.x, 1.2.0 and older. The 1.3.0 build from 1 November was signed with a different key: uninstall that one first.
+2. Open Intent and follow the two-minute setup: choose your essentials, the apps you want to use less (only Instagram comes ticked), your if-then plan, Gentle or Strict, and then the one or two switches your choices need. If Android restarts setup when you pick Intent as your home app, it picks up where you were.
 3. **Make Intent your home app** when asked, or later in *Settings › Apps › Default apps › Home app*.
-4. Optional but recommended: **turn on Focus Guard** (*Settings › Accessibility › Intent · Focus Guard*).
+4. Recommended: **turn on Focus Guard** (*Settings › Accessibility › Intent · Focus Guard*).
    On Android 13 and newer, apps installed from a file get a **"Restricted setting"** message at this step. Fix it like this: *Settings › Apps › Intent › ⋮ (top right) › Allow restricted settings*, then try again.
    On **Xiaomi, Redmi and POCO** phones, also allow *Display pop-up windows while running in the background* in Intent's permissions (Intent's Focus Guard screen has a button for it), or the pause can't appear over other apps.
-5. For the **real break**, allow Intent **Notification access** once (the break sheet takes you there; on Android 13 and newer it may need the same "Allow restricted settings" step). That's what keeps every notification but calls away.
-6. Optional: turn on **Intent · Shorts & Reels** in the same Accessibility list to pause the swipe through YouTube Shorts and Instagram Reels (Intent › Settings › Shorts and Reels walks you through it).
-7. Optional: allow **usage access** for unlock counts, and notifications for "your minutes are up" reminders when Focus Guard is off.
+5. Everything else is asked for when you first use it: **Notification access** when you start a real break (it keeps every notification but calls away, and lets Intent pause exactly the app it closes), **usage access** when you tap the screen time, **Intent · Shorts & Reels** in the Accessibility list if you want the experimental feed guard (Strict mode's daily number needs it).
 
-Requires Android 8.0 or newer. The APK is about 300 KB.
+Requires Android 8.0 or newer. The APK is about 400 KB.
 
 If Intent ever crashes, it shows what went wrong with a **Copy details** button (please send them in an [issue](https://github.com/poshithNandyala/intent-launcher/issues)) and a one-tap way back to your previous home app.
 
 ## Privacy
 
-Intent has **no internet permission**, so it cannot send anything anywhere. There are no accounts, ads, analytics or trackers. Focus Guard sees only *which* app is in front (its package name) and **cannot read your screen** (`canRetrieveWindowContent="false"`). The optional Shorts & Reels guard is told only about scrolling inside YouTube and Instagram and looks at view names (like `reel_recycler`), never text. Everything stays in one private file on the phone. Details: [PRIVACY.md](PRIVACY.md).
+Intent has **no internet permission**, so it cannot send anything anywhere. There are no accounts, ads, analytics or trackers. The two accessibility services are separate and both optional:
+
+- **Focus Guard is content-blind.** It's set up so it can't read any screen (`canRetrieveWindowContent="false"`): it learns only *which* app is in front, by package name.
+- **The Shorts & Reels guard reads view names, never text.** Android tells it only about YouTube and Instagram, and lets it look at those two apps' screens; Intent uses that only to read the names of views (like `reel_recycler`) and their size, to tell the Shorts or Reels player from comments or the home feed.
+
+Everything stays in one private file on the phone, including your daily plan and look-backs, which you can export or delete. Details: [PRIVACY.md](PRIVACY.md).
 
 ## How it decides
 
-Every way of opening an app (home screen, search, and with Focus Guard on, notifications, recents and links) goes through one function, [`Policy.decide`](app/src/main/java/com/poshith/intent/core/Policy.kt). It's pure Kotlin with [116 unit tests](app/src/test/java/com/poshith/intent/core/Tests.kt):
+Every way of opening an app (home screen, search, and with Focus Guard on, notifications, recents and links) goes through one function, [`Policy.decide`](app/src/main/java/com/poshith/intent/core/Policy.kt). It's pure Kotlin with [193 unit tests](app/src/test/java/com/poshith/intent/core/Tests.kt):
 
 ```
 protected app (phone, settings, keyboard…)  → open
 real break                                  → paused until it ends (only calls)
 essential                                   → open
 focus / basic phone                         → paused until it ends
-session you already chose, still running    → open
+session still running                       → open, unless it's an ordinary session and
+                                              morning quiet or wind-down is firm (Strict
+                                              mode, or firm wind-down): then paused.
+                                              A session unlocked on purpose keeps its minutes.
 blocked                                     → paused (type a phrase for 5 minutes)
-mindful during morning quiet                → paused for a few minutes
+use-less app during morning quiet           → paused for a few minutes
+use-less or check-in app at night           → paused until morning (normal apps too, if firm)
 check-in app outside its window             → paused until the next window
-mindful (or anything, if strict) at night   → paused until morning
-mindful                                     → the pause: breath, feeling, purpose, minutes
+use-less app                                → the pause: breath, minutes
 everything else                             → open
 ```
+
+Changes that loosen a rule go through one check too: a schedule edit is compared minute by minute over the day ([`Schedule`](app/src/main/java/com/poshith/intent/core/Schedule.kt)), so a later wind-down start, an earlier end, an extra check-in window or a longer one waits like any loosening, and Strict mode keeps it for tomorrow.
 
 ## Build from source
 
@@ -102,10 +110,10 @@ The app uses only the Android framework (no AndroidX, no libraries), which keeps
 
 | Path | What's there |
 |---|---|
-| `app/src/main/java/.../core` | The rules engine, sessions, lessons and feelings. Pure Kotlin, unit tested. |
+| `app/src/main/java/.../core` | The rules engine, schedules, sessions, Strict mode, quotes, lessons and feelings. Pure Kotlin, unit tested. |
 | `app/src/main/java/.../data` | Local storage, the app list (LauncherApps), usage stats, counters. |
 | `app/src/main/java/.../guard` | Launching, Focus Guard (accessibility service) and reminders. |
-| `app/src/main/java/.../ui` | The small design system: palette, type, sheets, the breathing view, the Mind library. |
+| `app/src/main/java/.../ui` | The small design system: palette, type, sheets, the breathing view, Practice, the daily plan and the one-minute reset. |
 | `docs/RESEARCH.md` | Every study the app relies on, with what it does and doesn't show. |
 
 ## Credits

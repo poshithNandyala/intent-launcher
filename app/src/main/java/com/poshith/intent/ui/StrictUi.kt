@@ -1,17 +1,13 @@
 package com.poshith.intent.ui
 
 import android.view.View
-import android.widget.TextView
-import com.poshith.intent.core.Feed
-import com.poshith.intent.core.Mode
 import com.poshith.intent.core.Strict
 import com.poshith.intent.data.Stats
 import com.poshith.intent.data.Store
-import com.poshith.intent.data.Usage
 
 /**
- * The parts of Strict mode you see: the emergency code, the "rules only get stricter today" sheet, and
- * the lines every stop screen shares (what to do next, who you said you are, what the scrolling costs).
+ * The parts of Strict mode you see: the emergency code and the "rules only get stricter today" sheet;
+ * and the line every stop screen ends with: what you planned to do next.
  */
 
 /** The one way past Strict mode today: the code you wrote down when you turned it on. */
@@ -40,14 +36,7 @@ fun BaseActivity.askEmergencyCode(what: String, onOk: () -> Unit) {
 /** A small "Emergency code" link for a stop screen (only when there's a code to type). */
 fun BaseActivity.emergencyLink(what: String, onOk: () -> Unit): View? {
     if (Store.strictCodeHash.isEmpty()) return null
-    return text("Emergency code", 13.5f, P.text3).apply {
-        gravity = android.view.Gravity.CENTER
-        minHeight = dp(44)
-        setPadding(dp(16), 0, dp(16), 0)
-        background = ripple(null, dp(20).toFloat())
-        isClickable = true
-        setOnClickListener { it.tick(); askEmergencyCode(what, onOk) }
-    }
+    return link("Emergency code") { askEmergencyCode(what, onOk) }
 }
 
 /** Strict mode: something tried to make a rule looser. Today it can't; tomorrow it can. */
@@ -66,30 +55,25 @@ fun BaseActivity.strictBlocksLoosening(onCancel: (() -> Unit)?) {
     s.show()
 }
 
-/** What to do instead, in your own words: today's one thing, or your plan for the pull. */
-fun nextThing(): String? {
-    val one = Store.oneThing
-    if (one.isNotBlank() && Store.oneThingDay == Store.dayKey()) return "Next: $one"
-    val plan = Store.urgePlan
-    return if (plan.isNotBlank()) "Next: $plan." else null
+/**
+ * Strict mode, after a stop: when Shorts and Reels open again ("tomorrow", "14:30", "tomorrow at 01:30"),
+ * or null while they're open. Once today's number is used that's tomorrow, whatever the lock says.
+ */
+fun android.content.Context.feedsClosedUntil(now: Long = System.currentTimeMillis()): String? {
+    if (!Store.locked(now)) return null
+    val eod = Store.endOfDay(now)
+    val at = Strict.opensAt(Stats.shortVideosToday() >= Store.reelsAllowToday(now), Store.lockUntil, now, eod)
+    if (at <= now) return null
+    return Strict.whenWords(at, eod) { android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(it)) }.removePrefix("at ")
 }
 
-/** Who you said you're becoming. */
-fun identityLine(): String? = Store.identity.takeIf { it.isNotBlank() }?.let { "You're someone who $it." }
-
 /**
- * What the scrolling costs, in your own numbers (needs usage access): "1 h 52 min in pull apps today.
- * A year of days like this: 43 waking days." Filled in off the main thread; stays hidden otherwise.
+ * What to do instead, in your own words: today's first step (or today's one thing), else your plan for
+ * the pull. Only today's: yesterday's plan isn't passed off as today's.
  */
-fun BaseActivity.fillCost(into: TextView) {
-    into.visibility = View.GONE
-    Bg.run {
-        val u = Usage.today(this) ?: return@run
-        val pull = Store.packagesWithMode(Mode.MINDFUL) + Feed.values().flatMap { it.packages }
-        val ms = u.msFor(pull)
-        val minutes = (ms / 60_000L).toInt()
-        if (minutes < 10) return@run
-        val line = "${Usage.formatMinutes(ms)} in pull apps today. A year of days like this: ${Strict.wakingDaysPerYear(minutes)} waking days."
-        runOnUiThread { if (!isDestroyed) { into.text = line; into.visibility = View.VISIBLE } }
-    }
+fun nextThing(): String? {
+    Store.todayStep()?.let { return "Next: $it" }
+    Store.todayIntention()?.let { return "Next: $it" }
+    val plan = Store.urgePlan
+    return if (plan.isNotBlank()) "Next: $plan." else null
 }

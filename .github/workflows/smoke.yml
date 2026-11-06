@@ -24,7 +24,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # A phone-sized screen in dark mode, the same in light mode, and a small old phone.
+          # The newest Android, a phone-sized screen in dark mode, the same in light mode, and a small old phone.
+          - { api: 36, profile: pixel_6, night: "no" }
           - { api: 35, profile: pixel_6, night: "yes" }
           - { api: 30, profile: pixel_6, night: "no" }
           - { api: 28, profile: "", night: "no" }

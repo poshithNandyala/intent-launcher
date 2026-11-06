@@ -75,12 +75,18 @@ import com.poshith.intent.ui.tick
 import com.poshith.intent.ui.toggleRow
 import com.poshith.intent.ui.vbox
 import com.poshith.intent.ui.vflex
+import com.poshith.intent.ui.feedsClosedUntil
+import com.poshith.intent.ui.emergencyLink
+import com.poshith.intent.ui.planSheet
+import com.poshith.intent.ui.rolloverSheet
+import com.poshith.intent.ui.intentionSheet
+import com.poshith.intent.ui.reflectSheet
 import java.util.Date
 import kotlin.math.abs
 
 /**
  * The home screen. Time, today's one thing, your few chosen apps as words, and nothing that wants
- * your attention. Swipe up: find any app by typing. Swipe right: the Mind library.
+ * your attention. Swipe up: find any app by typing. Swipe right: Practice (a one-minute reset, lessons).
  * Swipe down: notifications and quick settings (Wi-Fi, Bluetooth, hotspot). Long-press: edit.
  */
 class HomeActivity : BaseActivity() {
@@ -111,6 +117,7 @@ class HomeActivity : BaseActivity() {
     private var quoteText: TextView? = null
     private var quoteBy: TextView? = null
     private var quoteNow = com.poshith.intent.core.Quotes.all.first()
+    /** At your midnight, tomorrow's line (if the home screen is in front then). */
     private val quoteTicker = object : Runnable {
         override fun run() {
             showQuote(quoteForNow(), animate = true)
@@ -118,12 +125,9 @@ class HomeActivity : BaseActivity() {
         }
     }
 
-    /** How often the home quote changes: every 30 seconds, or once a day (Settings). */
-    private fun quoteEvery(): Long = if (Store.quoteDaily) 86_400_000L else QUOTE_MS
-    /** Local time, so "once a day" turns over at midnight where you are. */
-    private fun quoteClock(): Long { val now = System.currentTimeMillis(); return now + java.util.TimeZone.getDefault().getOffset(now) }
-    private fun quoteForNow() = com.poshith.intent.core.Quotes.forMoment(quoteClock(), quoteEvery())
-    private fun untilNextQuote(): Long = quoteEvery() - quoteClock() % quoteEvery() + 50
+    /** One line a day, or the one you pinned for the week. Local time: it turns over at your midnight. */
+    private fun quoteForNow(): com.poshith.intent.core.Quote = Store.todaysQuote()
+    private fun untilNextQuote(): Long = Store.endOfDay() - System.currentTimeMillis() + 1_000
     private var layoutSig = ""
     private val barsListener: (com.poshith.intent.ui.Bars) -> Unit = { b ->
         if (::page.isInitialized) page.setPadding(dp(30) + b.left, b.top + dp(34), dp(30) + b.right, b.bottom + dp(6))
@@ -140,10 +144,10 @@ class HomeActivity : BaseActivity() {
 
     companion object {
         private const val AUTO_LOCK_MS = 15_000L
-        private const val QUOTE_MS = 30_000L
-        private val REFRESH_KEYS = setOf("home", "labels", "rules", "one_thing", "focus_until", "focus_kind", "wd_on",
+        private val REFRESH_KEYS = setOf("home", "labels", "rules", "one_thing", "one_thing_day", "plan_skipped", "plan_prompt",
+            "evening_on", "reflections", "day_start", "focus_until", "focus_kind", "wd_on",
             "wd_start", "wd_end", "theme", "font", "align", "text_scale", "show_date", "show_stats", "show_one_thing",
-            "morning_until", "hidden", "show_quote")
+            "morning_until", "hidden", "show_quote", "quote_pin", "quote_pin_until")
     }
 
     // ---------------------------------------------------------------------------------- lifecycle
@@ -176,7 +180,7 @@ class HomeActivity : BaseActivity() {
         IntentApp.onUnlock(unlockListener)
         ui.removeCallbacks(ticker); ui.postDelayed(ticker, 20_000)
         if (quoteText != null) {
-            // Back home: the line for this moment, then a new one every 30 seconds (or tomorrow).
+            // Back home: today's line (it changes at midnight, not while you look at it).
             showQuote(quoteForNow(), animate = false)
             ui.removeCallbacks(quoteTicker); ui.postDelayed(quoteTicker, untilNextQuote())
         }
@@ -385,8 +389,8 @@ class HomeActivity : BaseActivity() {
         }.legible()
         page.addView(statsLine, lp())
 
-        // A line worth stopping for: a new one every 30 seconds, or tap for the next. On a wallpaper it
-        // sits on a soft pane in full-strength text, so it reads on any picture, light or busy.
+        // A line worth stopping for: one a day. Tap it for where it's from (and to pin it or turn quotes
+        // off). On a wallpaper it sits on a soft pane in full-strength text, so it reads on any picture.
         quoteBox = null; quoteText = null; quoteBy = null
         if (Store.showQuote) {
             val onWall = Store.wallpaper
@@ -403,11 +407,7 @@ class HomeActivity : BaseActivity() {
                     background = ripple(rounded(if (k.dark) 0x52000000 else 0x73FFFFFF, r), r)
                     setPadding(dp(18), dp(14), dp(18), dp(15))
                 } else background = ripple(null, dp(12).toFloat())
-                setOnClickListener {
-                    it.tick()
-                    showQuote(com.poshith.intent.core.Quotes.next(quoteNow), animate = true)
-                    ui.removeCallbacks(quoteTicker); ui.postDelayed(quoteTicker, if (Store.quoteDaily) untilNextQuote() else QUOTE_MS)
-                }
+                setOnClickListener { it.tick(); quoteSheet(quoteNow) }
                 addView(quote, lp()); addView(by, lp())
             }
             // The pane reaches a little into the margin, so its words line up with the clock and apps.
@@ -443,16 +443,16 @@ class HomeActivity : BaseActivity() {
         oneThing = text("", scale(16f), k.text2).apply {
             gravity = g
             setPadding(0, dp(8), 0, dp(8))
-            minHeight = dp(44)
+            minHeight = dp(48)
             background = ripple(null, dp(10).toFloat())
-            setOnClickListener { it.tick(); oneThingSheet() }
+            setOnClickListener { it.tick(); oneThingTap() }
         }.legible()
         mid.addView(oneThing, lp())
 
         status = text("", scale(15f), k.accent, Fonts.medium(this)).apply {
             gravity = g
             setPadding(0, dp(4), 0, dp(10))
-            minHeight = dp(40)
+            minHeight = dp(48)
             visibility = View.GONE
             background = ripple(null, dp(10).toFloat())
             setOnClickListener { it.tick(); statusSheet() }
@@ -472,6 +472,24 @@ class HomeActivity : BaseActivity() {
 
         // Taps on empty space: double-tap to lock, long-press to edit.
         page.setOnTouchListener { _, e -> taps.onTouchEvent(e); true }
+    }
+
+    /** Where today's line is from, and what research it leans on. Pin it for a week, or turn quotes off. */
+    private fun quoteSheet(q: com.poshith.intent.core.Quote) {
+        val sh = com.poshith.intent.ui.Sheet(this, "About this line")
+        sh.add(text("“${q.text}”", 17f, P.text).apply { setLineSpacing(0f, 1.25f) })
+        sh.add(text(q.by.ifBlank { "Written for Intent" }, 14.5f, P.text2, Fonts.medium(this)))
+        if (q.note.isNotBlank()) sh.add(text(q.note, 14.5f, P.text2).apply { setLineSpacing(0f, 1.25f) })
+        val idx = com.poshith.intent.core.Quotes.all.indexOf(q)
+        val now = System.currentTimeMillis()
+        val pinned = Store.quotePinned == idx && Store.quotePinnedUntil > now
+        sh.item(if (pinned) "Unpin" else "Pin it for a week", if (pinned) "Back to a new line each day" else "The same line every day until then") {
+            if (pinned) { Store.quotePinned = -1; Store.quotePinnedUntil = 0L }
+            else { Store.quotePinned = idx; Store.quotePinnedUntil = now + com.poshith.intent.core.Quotes.PIN_MS }
+            showQuote(quoteForNow(), animate = true)
+        }
+        sh.item("Turn quotes off", "You can bring them back in Settings › Home screen") { Store.showQuote = false }
+        sh.show()
     }
 
     /** Shows [q] in the quote pane: a soft cross-fade of the words, the pane itself stays put. */
@@ -611,16 +629,35 @@ class HomeActivity : BaseActivity() {
         }
     }
 
+    /**
+     * Today's one thing, above your apps. Yesterday's isn't passed off as today's: it says "Yesterday"
+     * and a tap offers to keep, change or clear it. With nothing set yet: "What matters today?" (until you
+     * answer or say "Not today"); late in your day, if you turned the look-back on: "How did today go?".
+     */
     private fun renderOneThing() {
         if (!::oneThing.isInitialized) return
-        if (!Store.showOneThing) { oneThing.visibility = View.GONE; return }
-        oneThing.visibility = View.VISIBLE
-        val t = Store.oneThing
-        if (t.isBlank()) {
-            oneThing.visibility = View.GONE
-        } else {
-            oneThing.text = "Today · $t"
-            oneThing.setTextColor(ink().text2)
+        val k = ink()
+        val today = Store.todayIntention()
+        val stale = Store.staleIntention()
+        val line: Pair<String, Int>? = when {
+            !Store.showOneThing -> null
+            com.poshith.intent.ui.lookBackDue() -> "How did today go?" to k.accent
+            today != null -> "Today · $today" to k.text2
+            stale != null -> "Yesterday · $stale" to k.text2
+            com.poshith.intent.ui.planDue() -> "What matters today?" to k.accent
+            else -> null
+        }
+        oneThing.visibility = if (line == null) View.GONE else View.VISIBLE
+        if (line != null) { oneThing.text = line.first; oneThing.setTextColor(line.second) }
+    }
+
+    private fun oneThingTap() {
+        val done = { renderOneThing() }
+        when {
+            com.poshith.intent.ui.lookBackDue() -> reflectSheet(done)
+            Store.todayIntention() != null -> intentionSheet(done)
+            Store.staleIntention() != null -> rolloverSheet(done)
+            else -> planSheet(done)
         }
     }
 
@@ -634,14 +671,14 @@ class HomeActivity : BaseActivity() {
                 val left = ((Store.focusUntil - now + 59_999) / 60_000L).toInt()
                 (if (Store.focusIsBreak) "Break" else "Focus") + " · $left min left"
             }
-            Store.locked(now) -> "Shorts and Reels locked until ${tf.format(Date(Store.lockUntil))}"
+            Store.locked(now) && feedsClosedUntil(now) != null -> "Shorts and Reels closed until ${feedsClosedUntil(now)}"
             Store.morningUntil > now -> "Morning quiet until ${tf.format(Date(Store.morningUntil))}"
             Store.windDown?.contains(Store.minuteOfDay(now)) == true ->
                 "Wind-down until ${tf.format(Date(Store.windDown!!.endsAfter(now)))}"
             // Nothing else to say: push for the protections that are still off (until they're on, or
             // "remind me next week").
             now >= Store.protectNudgeAfter -> Launch.missingProtections(this).let { m ->
-                when (m.size) { 0 -> null; 1 -> "Turn on ${m[0].name}"; else -> "${m.size} protections off · turn them on" }
+                when (m.size) { 0 -> null; 1 -> "${m[0].name} is off"; else -> "${m[0].name} and ${m[1].name} are off" }
             }
             else -> null
         }
@@ -651,7 +688,7 @@ class HomeActivity : BaseActivity() {
 
     /** The protections that are off, one tap each, and a way to be reminded later. */
     private fun protectSheet(missing: List<Launch.Missing>) {
-        val s = Sheet(this, "Turn on your protection", "Intent works best with each of these on. One switch each in Android's settings.")
+        val s = Sheet(this, "Switched off", "The rules you chose depend on these. One switch each in Android's settings.")
         for (m in missing) s.item(m.name, null, P.accent, keepOpen = false) { m.turnOn(this) }
         s.add(button("Remind me next week", Kind.PLAIN) {
             Store.protectNudgeAfter = System.currentTimeMillis() + 7 * 86_400_000L
@@ -698,13 +735,14 @@ class HomeActivity : BaseActivity() {
             val notNow = Stats.notNowToday()
             val top = usage?.foregroundMs?.filterKeys { it in mindful }?.entries?.sortedByDescending { it.value }
                 ?.filter { it.value >= 60_000 }?.take(4).orEmpty()
+            val pull = usage?.msFor(mindful) ?: 0L
             runOnUiThread {
                 if (isDestroyed) return@runOnUiThread
                 body.removeAllViews()
-                fun row(label: String, value: String, warn: Boolean = false) {
-                    val r = hbox(Gravity.CENTER_VERTICAL).apply { minimumHeight = dp(46) }
+                fun row(label: String, value: String) {
+                    val r = hbox(Gravity.CENTER_VERTICAL).apply { minimumHeight = dp(48) }
                     r.addView(text(label, 16f, P.text2), lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-                    r.addView(text(value, 16f, if (warn) P.warn else P.text, Fonts.medium(this@HomeActivity)))
+                    r.addView(text(value, 16f, P.text, Fonts.medium(this@HomeActivity)))
                     body.addView(r, lp())
                 }
                 if (usage == null) {
@@ -713,32 +751,20 @@ class HomeActivity : BaseActivity() {
                 } else {
                     row("Screen time", Usage.formatMinutes(usage.totalMs(packageName)))
                     if (usage.unlocksKnown) row("Unlocks", usage.unlocks.toString())
-                    val pull = usage.msFor(mindful)
-                    row("In pull apps", Usage.formatMinutes(pull), warn = pull >= 2 * 3_600_000L)
+                    row("In apps you want to use less", Usage.formatMinutes(pull))
                     for ((pkg, ms) in top) row("   " + Apps.labelFor(this, pkg), Usage.formatMinutes(ms))
                 }
                 val left = com.poshith.intent.core.Limits.budgetLeft(Store.budgetMin, Stats.day().plannedMin)
-                if (left != null) row("Mindful budget left", "$left of ${Store.budgetMin} min", warn = left == 0)
-                if (shorts > 0) row("Shorts swiped", shorts.toString(), warn = shorts >= 50)
-                if (reels > 0) row("Reels swiped", reels.toString(), warn = reels >= 50)
+                if (left != null) row("Budget left", "$left of ${Store.budgetMin} min")
+                // Counted from scrolling, so estimates.
+                if (shorts > 0) row("Shorts (about)", shorts.toString())
+                if (reels > 0) row("Reels (about)", reels.toString())
                 if (notNow > 0) row("Said “Not now”", "$notNow×")
-                // Today's Mind idea starts as a question; one you haven't guessed waits here too.
-                val lesson = com.poshith.intent.core.Lessons.forDay(System.currentTimeMillis() / 86_400_000L)
-                val guess = com.poshith.intent.core.Guesses.forLesson(lesson.id)
-                if (guess != null && lesson.id !in Store.lessonsRead) {
-                    body.addView(space(14))
-                    val r = dp(18).toFloat()
-                    val card = vbox().apply {
-                        background = ripple(rounded(P.surface2, r), r)
-                        setPadding(dp(18), dp(14), dp(18), dp(16))
-                        isClickable = true
-                        setOnClickListener { it.tick(); s.dismiss(); mindPanel().open() }
-                    }
-                    card.addView(text("TODAY'S QUESTION · ONE MINUTE", 11.5f, P.text3, Fonts.medium(this@HomeActivity)).apply { letterSpacing = 0.1f })
-                    card.addView(text(guess.question, 16.5f, P.text, Fonts.medium(this@HomeActivity)).apply { setLineSpacing(0f, 1.2f); setPadding(0, dp(6), 0, 0) })
-                    card.addView(text("Guess, then see what the research found", 14f, P.accent).apply { setPadding(0, dp(8), 0, 0) })
-                    body.addView(card, lp())
-                }
+                // The long view, only here, where you came to look: what a year of days like today adds up to.
+                val pullMin = (pull / 60_000L).toInt()
+                if (usage != null && pullMin >= 10) body.addView(paragraph("A year of days like today: about ${com.poshith.intent.core.Strict.wakingDaysPerYear(pullMin)} waking days in these apps.", 14.5f, P.text2).apply {
+                    setPadding(0, dp(10), 0, 0)
+                }, lp())
                 body.addView(space(8))
                 body.addView(button("Your week", Kind.PLAIN) { s.dismiss(); mindPanel().open() }, lp())
             }
@@ -1064,7 +1090,7 @@ class HomeActivity : BaseActivity() {
             val mode = Store.rule(a.pkg).mode
             val tag = when {
                 Launch.isProtected(this@HomeActivity, a.pkg) -> if (a.isWork) "work" else null
-                mode == Mode.MINDFUL -> "mindful"
+                mode == Mode.MINDFUL -> "use less"
                 mode == Mode.BATCHED -> "check-in"
                 mode == Mode.BLOCKED -> "blocked"
                 a.isWork -> "work"
@@ -1091,7 +1117,7 @@ class HomeActivity : BaseActivity() {
                 setOnClickListener { it.tick(); action() }
             }
             row.addView(text(label, 21f, P.text, lines = 1), lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-            if (tag != null) row.addView(text(tag, 13f, if (tag == "mindful" || tag == "blocked" || tag == "check-in") P.accent else P.text3, Fonts.medium(this@HomeActivity)).apply {
+            if (tag != null) row.addView(text(tag, 13f, if (tag == "use less" || tag == "blocked" || tag == "check-in") P.accent else P.text2, Fonts.medium(this@HomeActivity)).apply {
                 setPadding(dp(12), 0, 0, 0)
             })
             return row
@@ -1144,7 +1170,7 @@ class HomeActivity : BaseActivity() {
         if (!prot) {
             s.add(text("HOW IT OPENS", 12f, P.text3, Fonts.medium(this)).apply { letterSpacing = 0.1f; setPadding(0, dp(14), 0, dp(2)) })
             val modes = Flow(this)
-            for ((m, label) in listOf(Mode.ESSENTIAL to "Essential", Mode.NORMAL to "Normal", Mode.MINDFUL to "Mindful",
+            for ((m, label) in listOf(Mode.ESSENTIAL to "Essential", Mode.NORMAL to "Normal", Mode.MINDFUL to "Use less",
                 Mode.BATCHED to "Check-in", Mode.BLOCKED to "Blocked")) {
                 val c = Chip(this, label); c.on = m == rule.mode
                 c.setOnClickListener {
@@ -1168,7 +1194,7 @@ class HomeActivity : BaseActivity() {
     private fun modeLine(rule: com.poshith.intent.core.Rule): String = when (rule.mode) {
         Mode.ESSENTIAL -> "Essential: opens instantly, even during focus."
         Mode.NORMAL -> "Opens instantly. Waits during focus and breaks."
-        Mode.MINDFUL -> "Mindful: a ${rule.pauseSec} s pause first, then the minutes you choose."
+        Mode.MINDFUL -> "Use less: a ${rule.pauseSec} s pause first, then the minutes you choose."
         Mode.BATCHED -> "Opens only at your check-in times (${checkInText()})."
         Mode.BLOCKED -> "Blocked. You can still unlock it once by typing a phrase."
     }
@@ -1195,9 +1221,9 @@ class HomeActivity : BaseActivity() {
     private fun homeMenu() {
         val s = Sheet(this, null)
         s.item("Edit home apps", "${Store.homeKeys.size} of ${Store.MAX_HOME}") { openSettings("home") }
-        s.item("Today's one thing") { oneThingSheet() }
+        s.item("Today's one thing") { oneThingTap() }
         s.item("Focus or a real break") { focusSheet() }
-        s.item("Mind library", "Short, sourced lessons") { mindPanel().open() }
+        s.item("Practice", "A one-minute reset, and short lessons from research") { mindPanel().open() }
         s.item("Settings") { openSettings(null) }
         if (!Launch.isDefaultHome(this)) s.item("Make Intent your home screen", color = P.accent) { Launch.requestHome(this) }
         s.show()
@@ -1207,31 +1233,21 @@ class HomeActivity : BaseActivity() {
         startActivity(Intent(this, SettingsActivity::class.java).apply { if (page != null) putExtra(SettingsActivity.EXTRA_PAGE, page) })
     }
 
-    private fun oneThingSheet() {
-        val s = Sheet(this, "Today's one thing", "The single thing that would make today a good day. Attention follows goals, and a goal in view is harder to forget.")
-        val f = field("e.g. Finish the API endpoint", Store.oneThing)
-        s.add(f)
-        s.add(button("Save", Kind.PRIMARY) { Store.oneThing = f.text.toString(); Store.oneThingDay = Store.dayKey(); s.dismiss() })
-        if (Store.oneThing.isNotBlank()) s.add(button("Done with it", Kind.PLAIN) { Store.oneThing = ""; s.dismiss() })
-        s.show()
-        showKeyboard(f)
-    }
-
     private fun statusSheet() {
         val now = System.currentTimeMillis()
         when {
             Store.focusActive(now) -> focusSheet()
-            Store.locked(now) -> {
-                val at = DateFormat.getTimeFormat(this).format(Date(Store.lockUntil))
-                val s = Sheet(this, "Shorts and Reels locked until $at", "Strict mode: you went back to them after being stopped. The rest of YouTube and Instagram works as usual. " +
-                    com.poshith.intent.core.Strict.nextLockWords(Store.stopsToday()))
+            Store.locked(now) && feedsClosedUntil(now) != null -> {
+                val s = Sheet(this, "Shorts and Reels closed until ${feedsClosedUntil(now)}", "Strict mode, as you chose. The rest of YouTube and Instagram works as usual.")
                 com.poshith.intent.ui.nextThing()?.let { s.add(paragraph(it, 16f, P.text), 0) }
                 s.item("Strict mode settings") { openSettings("strict") }
                 s.show()
             }
             Store.morningUntil > now -> {
-                val s = Sheet(this, "Morning quiet", "Mindful apps rest for the first ${Store.morningQuietMin} minutes after your first unlock of the day, so your first thoughts are your own. Change it in Settings.")
-                s.add(HoldButton(this, "Hold to end it for today", 2500) { Store.morningUntil = 0; s.dismiss(); renderStatus() })
+                val s = Sheet(this, "Morning quiet", "The apps you want to use less rest for the first ${Store.morningQuietMin} minutes after your first unlock of the day, so your first thoughts are your own. Change it in Settings.")
+                // Strict mode: quiet hours have no "end it" button (the emergency code is the one way past).
+                if (!Store.strictActive()) s.add(HoldButton(this, "Hold to end it for today", 2500) { Store.morningUntil = 0; s.dismiss(); renderStatus() })
+                else emergencyLink("It ends morning quiet for today.") { Store.morningUntil = 0; s.dismiss(); renderStatus() }?.let { s.add(it) }
                 s.show()
             }
             Store.windDown?.contains(Store.minuteOfDay(now)) != true -> {
@@ -1239,7 +1255,7 @@ class HomeActivity : BaseActivity() {
                 if (missing.isNotEmpty()) protectSheet(missing)
             }
             else -> {
-                val s = Sheet(this, "Wind-down", "Mindful apps rest until morning. Screens in the last hour push sleep later. Change the hours in Settings.")
+                val s = Sheet(this, "Wind-down", "The apps you want to use less rest until morning, and check-in apps too. Calls, alarms and essentials still work. Change the hours in Settings.")
                 s.item("Wind-down settings") { openSettings("focus") }
                 s.show()
             }

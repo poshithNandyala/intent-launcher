@@ -19,9 +19,11 @@ import com.poshith.intent.data.Apps
 import com.poshith.intent.data.Store
 
 /**
- * When Focus Guard is off, Intent can't end a session by itself, so it does the next best thing:
- * a quiet notification when the minutes you chose are up. (With Focus Guard on, the time's-up
- * screen appears instead and this is never used.)
+ * When Focus Guard isn't running, Intent can't end a session by itself, so it does the next best
+ * thing: a quiet notification when the minutes you chose are up. It's also the fallback when Focus
+ * Guard goes away in the middle of a session (switched off, or stopped by Android): the session's
+ * minutes keep running on the clock and this ends it. With Focus Guard running it's cancelled, and
+ * firing twice (the timer and its backup alarm) ends a session once.
  */
 object Reminder {
     const val CHANNEL = "sessions"
@@ -43,10 +45,12 @@ object Reminder {
     fun canNotify(ctx: Context): Boolean =
         Build.VERSION.SDK_INT < 33 || ctx.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
 
-    fun schedule(ctx: Context, pkg: String, minutes: Int) {
+    fun schedule(ctx: Context, pkg: String, minutes: Int) = scheduleMs(ctx, pkg, minutes * 60_000L, minutes)
+
+    /** Ends the session [ms] from now; [minutes] is the session's length, for the words. */
+    fun scheduleMs(ctx: Context, pkg: String, ms: Long, minutes: Int) {
         val app = ctx.applicationContext
         cancel(app, pkg)
-        val ms = minutes * 60_000L
         // In-process timer (on time while Intent is alive, which a home app usually is)...
         val r = Runnable { fire(app, pkg, minutes) }
         pending[pkg] = r
@@ -74,6 +78,13 @@ object Reminder {
         // If Focus Guard came on in the meantime, it handles the ending itself.
         if (FocusGuardService.running) return
         Store.init(ctx)
+        // Already over (you left with "Not now", its rule changed, or the other half of this pair
+        // fired): nothing to end, nothing to say.
+        val now = android.os.SystemClock.elapsedRealtime()
+        val state = Store.sessions { b -> if (b[pkg] == null) null else b.remainingMs(pkg, now) to b.isRunning(pkg) } ?: return
+        // Time left on it (its minutes were paused while Focus Guard watched you leave the app): end it
+        // when they're really used. A session that's paused simply ends with the 10-minute gap.
+        if (state.first > 30_000) { if (state.second) scheduleMs(ctx, pkg, state.first, minutes); return }
         val key = "reminded_$pkg"
         val last = Store.raw().getLong(key, 0)
         if (System.currentTimeMillis() - last < 60_000) return // the alarm backup after the in-process timer
@@ -84,11 +95,11 @@ object Reminder {
         val label = Apps.labelFor(ctx, pkg)
         val open = PendingIntent.getActivity(ctx, 7, Intent(ctx, HomeActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)
-        val next = Store.oneThing.ifBlank { null }
+        val next = Store.todayStep() ?: Store.todayIntention()
         val n = Notification.Builder(ctx, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat)
-            .setContentTitle(if (minutes > 0) "Your $minutes minutes on $label are up" else "Time's up on $label")
-            .setContentText(next?.let { "Back to: $it" } ?: "This is the moment you planned to stop.")
+            .setContentTitle(if (minutes > 0) "Your $minutes minutes on $label ended" else "Your time on $label ended")
+            .setContentText(next?.let { "Next: $it" } ?: "Session over, as you planned.")
             .setContentIntent(open)
             .setAutoCancel(true)
             .setCategory(Notification.CATEGORY_REMINDER)

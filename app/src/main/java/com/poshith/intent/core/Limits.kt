@@ -23,6 +23,9 @@ object Limits {
         return if (recent >= REST_AFTER_SESSIONS) now + REST_MS else 0L
     }
 
+    /** A budget change that allows more time: a bigger number, or none at all (0). */
+    fun budgetLooser(old: Int, new: Int): Boolean = old > 0 && (new <= 0 || new > old)
+
     /** Minutes left of today's budget, or null when there's no budget. Every session takes the minutes chosen for it. */
     fun budgetLeft(budgetMin: Int, plannedMin: Int): Int? =
         if (budgetMin <= 0) null else (budgetMin - plannedMin).coerceAtLeast(0)

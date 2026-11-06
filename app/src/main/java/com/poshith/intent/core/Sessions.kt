@@ -119,6 +119,15 @@ class SessionBook {
         /** Away for longer than this and the session ends. */
         const val GAP_MS = 10 * 60_000L
         const val EXTENSION_MS = 2 * 60_000L
+
+        // Why a session was unlocked past a stop, on purpose. These keep their minutes whatever comes
+        // next (wind-down starting, say): you already chose, deliberately, to go past a rule.
+        const val WHY_UNLOCK = "One-time unlock"
+        const val WHY_LIMIT = "Past my limit"
+        const val WHY_BUDGET = "Past my budget"
+        const val WHY_CODE = "Emergency code"
+        fun isOverride(why: String?): Boolean = why == WHY_UNLOCK || why == WHY_LIMIT || why == WHY_BUDGET || why == WHY_CODE
+
         private fun clean(s: String) = s.replace('|', ' ').replace('\n', ' ').take(60)
     }
 }

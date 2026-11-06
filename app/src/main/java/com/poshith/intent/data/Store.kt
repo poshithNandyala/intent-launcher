@@ -23,7 +23,7 @@ object Store {
     fun init(ctx: Context) {
         if (::p.isInitialized) return
         p = ctx.applicationContext.getSharedPreferences("intent", Context.MODE_PRIVATE)
-        if (installDay.isEmpty()) installDay = dayKey()
+        if (installDay.isEmpty()) freshStart()
     }
 
     fun listen(l: SharedPreferences.OnSharedPreferenceChangeListener) { listeners += l; p.registerOnSharedPreferenceChangeListener(l) }
@@ -93,6 +93,20 @@ object Store {
     fun setTomorrow(key: String, v: Int) {
         p.edit().putInt(key + "_next", v).putString(key + "_next_day", dayKey(System.currentTimeMillis() + 86_400_000L)).apply()
     }
+    /**
+     * Every change to today's budget and to Shorts and Reels a day goes through here, from any page,
+     * so the latest choice always wins: tighter (or the same) applies now and drops a looser value still
+     * waiting for tomorrow; looser waits for tomorrow in Strict mode (otherwise the page has already
+     * made you wait a few seconds). Returns true if it applies now.
+     */
+    fun changeBudget(v: Int): Boolean = changeDaily("budget_min", v, com.poshith.intent.core.Limits.budgetLooser(budgetMin, v))
+    fun changeReelsAllow(v: Int): Boolean = changeDaily("reels_allow", v, v > reelsAllow)
+    private fun changeDaily(key: String, v: Int, looser: Boolean): Boolean {
+        if (looser && strictActive()) { setTomorrow(key, v); return false }
+        p.edit().putInt(key, v).remove(key + "_next").remove(key + "_next_day").apply()
+        return true
+    }
+
     /** The value waiting for tomorrow, or null. */
     fun tomorrowValue(key: String): Int? = if (str(key + "_next_day").isNotEmpty()) int(key + "_next", 0) else null
     fun clearTomorrow(key: String) { p.edit().remove(key + "_next").remove(key + "_next_day").apply() }
@@ -118,10 +132,18 @@ object Store {
     var showStats: Boolean get() = bool("show_stats", true); set(v) = putB("show_stats", v)
     var showOneThing: Boolean get() = bool("show_one_thing", true); set(v) = putB("show_one_thing", v)
     var checkIn: Boolean get() = bool("check_in", true); set(v) = putB("check_in", v)
-    /** One quote a day on the home screen. */
+    /** One quote a day on the home screen (off: none at all). */
     var showQuote: Boolean get() = bool("show_quote", true); set(v) = putB("show_quote", v)
-    /** The home quote stays all day instead of changing every 30 seconds. */
-    var quoteDaily: Boolean get() = bool("quote_daily", false); set(v) = putB("quote_daily", v)
+    /** A quote you pinned stays (by its index in Quotes.all) until this time, then it's one a day again. */
+    var quotePinned: Int get() = int("quote_pin", -1); set(v) = putI("quote_pin", v)
+    var quotePinnedUntil: Long get() = long("quote_pin_until", 0L); set(v) = putL("quote_pin_until", v)
+    /** Today's quote: the one you pinned (for its week), or one a day, turning over at your midnight. */
+    fun todaysQuote(now: Long = System.currentTimeMillis()): com.poshith.intent.core.Quote {
+        val day = com.poshith.intent.core.Quotes.localDay(now, java.util.TimeZone.getDefault().getOffset(now))
+        return com.poshith.intent.core.Quotes.today(day, quotePinned, quotePinnedUntil, now)
+    }
+    /** A blunt line on the Shorts and Reels pause instead of nothing. Off unless you ask for it. */
+    var bluntLines: Boolean get() = bool("blunt_lines", false); set(v) = putB("blunt_lines", v)
     /** Shorts and Reels: step in when you start swiping (needs the "Intent · Shorts & Reels" service). */
     var reelsOn: Boolean get() = bool("reels_on", true); set(v) = putB("reels_on", v)
     /** After "watch more", how many swipes before Intent asks again. 0: the swipe always stops you.
@@ -129,9 +151,9 @@ object Store {
      *  Strict mode waits for tomorrow (reels_allow_next). */
     var reelsAllow: Int
         get() { applyTomorrow("reels_allow"); return int("reels_allow", 5) }
-        set(v) = putI("reels_allow", v)
+        private set(v) = putI("reels_allow", v)
     /** If the unlock question gets no answer, lock the phone again (needs Focus Guard). */
-    var lockIfNoAnswer: Boolean get() = bool("lock_no_answer", true); set(v) = putB("lock_no_answer", v)
+    var lockIfNoAnswer: Boolean get() = bool("lock_no_answer", false); set(v) = putB("lock_no_answer", v)
     var autoOpenSingle: Boolean get() = bool("auto_open_single", false); set(v) = putB("auto_open_single", v)
     var doubleTapLock: Boolean get() = bool("double_tap_lock", true); set(v) = putB("double_tap_lock", v)
     var swipeLeftKey: String get() = str("swipe_left"); set(v) = put("swipe_left", v)
@@ -232,7 +254,7 @@ object Store {
     /** One daily budget of minutes for all mindful apps together (0 = none). Every session takes its minutes from it. */
     var budgetMin: Int
         get() { applyTomorrow("budget_min"); return int("budget_min", 0) }
-        set(v) = putI("budget_min", v)
+        private set(v) = putI("budget_min", v)
     /** A short rest for mindful apps after several sessions close together. */
     var restOn: Boolean get() = bool("rest_on", true); set(v) = putB("rest_on", v)
     var restUntil: Long get() = long("rest_until", 0L); set(v) = putL("rest_until", v)
@@ -250,16 +272,89 @@ object Store {
         get() = if (p.contains("default_limit")) int("default_limit", 0)
             else packagesWithMode(Mode.MINDFUL).firstOrNull()?.let { rule(it).dailyOpenLimit } ?: 0
         set(v) = putI("default_limit", v)
+    /** The pause grows with repeated opens: off unless you choose it (a plain short pause is the default). */
     var defaultEscalate: Boolean
-        get() = if (p.contains("default_escalate")) bool("default_escalate", true)
-            else packagesWithMode(Mode.MINDFUL).firstOrNull()?.let { rule(it).escalate } ?: true
+        get() = if (p.contains("default_escalate")) bool("default_escalate", false)
+            else packagesWithMode(Mode.MINDFUL).firstOrNull()?.let { rule(it).escalate } ?: false
         set(v) = putB("default_escalate", v)
     /** Seconds you wait before a change that makes an app easier to open takes effect. 0 = off. */
     var coolOffSec: Int get() = int("cool_off", 20); set(v) = putI("cool_off", v)
 
     // ------------------------------------------------------------------ intentions
+    /*
+     * One daily intention, shared by the home screen, the morning card, the stop screens and the time's-up
+     * note: what matters today, the first small step (and when), what might get in the way and the if-then
+     * plan for it. It belongs to one day (oneThingDay). Yesterday's isn't shown as today's: the home screen
+     * offers to keep it for today, change it, or clear it.
+     */
     var oneThing: String get() = str("one_thing"); set(v) = put("one_thing", v.trim().take(80))
     var oneThingDay: String get() = str("one_thing_day"); set(v) = put("one_thing_day", v)
+    var firstStep: String get() = str("first_step"); set(v) = put("first_step", v.trim().take(80))
+    var obstacle: String get() = str("obstacle"); set(v) = put("obstacle", v.trim().take(80))
+    var ifThen: String get() = str("if_then"); set(v) = put("if_then", v.trim().take(80))
+
+    /**
+     * When your day starts (minutes after midnight). A day's intention lasts until the next one starts,
+     * so a plan made at 1 a.m. still counts for the day you're in, and shift workers can start theirs
+     * in the evening. 4:00 by default.
+     */
+    var dayStartMin: Int get() = int("day_start", 4 * 60); set(v) = putI("day_start", v)
+    /** The day you're in, by your own day start ("yyyy-MM-dd" of the date it started on). */
+    fun planDay(now: Long = System.currentTimeMillis()): String = dayKey(now - dayStartMin * 60_000L)
+    /** Minutes since your day started. */
+    fun minutesIntoDay(now: Long = System.currentTimeMillis()): Int = Math.floorMod(minuteOfDay(now) - dayStartMin, 24 * 60)
+
+    /** Today's one thing, or null (none set, or it's from another day). */
+    fun todayIntention(): String? = oneThing.takeIf { it.isNotBlank() && oneThingDay == planDay() }
+    /** Today's first small step, or null. */
+    fun todayStep(): String? = firstStep.takeIf { it.isNotBlank() && oneThingDay == planDay() }
+    /** A one thing from an earlier day, waiting to be kept, changed or cleared. */
+    fun staleIntention(): String? = oneThing.takeIf { it.isNotBlank() && oneThingDay != planDay() }
+
+    /** Sets today's intention (blank parts clear). */
+    fun setIntention(thing: String, step: String = "", obstacle: String = "", ifThen: String = "") {
+        oneThing = thing; firstStep = step; this.obstacle = obstacle; this.ifThen = ifThen
+        oneThingDay = if (thing.isBlank()) "" else planDay()
+    }
+    /** Yesterday's intention, kept for today as it was. */
+    fun keepIntentionForToday() { if (oneThing.isNotBlank()) oneThingDay = planDay() }
+    fun clearIntention() = setIntention("")
+
+    /** "What matters today?" on the home screen, until you answer it or say "Not today". */
+    var planPrompt: Boolean get() = bool("plan_prompt", true); set(v) = putB("plan_prompt", v)
+    var planSkippedDay: String get() = str("plan_skipped"); set(v) = put("plan_skipped", v)
+    /** "How did today go?" on the home screen late in your day (off unless you turn it on). */
+    var eveningOn: Boolean get() = bool("evening_on", false); set(v) = putB("evening_on", v)
+    /** Tomorrow's first step, from last night's look-back: offered when you plan the next day. */
+    var nextStep: String get() = str("next_step"); set(v) = put("next_step", v.trim().take(80))
+    var nextStepFrom: String get() = str("next_step_from"); set(v) = put("next_step_from", v)
+    /** The first step you wrote down last night, if it's for today. */
+    fun stepFromLastNight(): String? =
+        nextStep.takeIf { it.isNotBlank() && nextStepFrom == planDay(System.currentTimeMillis() - 86_400_000L) }
+
+    // ------------------------------------------------------------------ look-backs (a short, private journal)
+    /** One evening look-back. Kept only on this phone; export or delete them in Settings. */
+    class Reflection(val day: String, val thing: String, val outcome: String, val helped: String, val pulled: String, val next: String)
+
+    val reflections: List<Reflection>
+        get() = try {
+            val a = JSONArray(str("reflections", "[]"))
+            List(a.length()) { i ->
+                val o = a.getJSONObject(i)
+                Reflection(o.optString("d"), o.optString("t"), o.optString("o"), o.optString("h"), o.optString("p"), o.optString("n"))
+            }
+        } catch (_: Exception) { emptyList() }
+
+    /** Saves today's look-back (replacing an earlier one from the same day); the last 120 are kept. */
+    fun addReflection(r: Reflection) {
+        val keep = (reflections.filter { it.day != r.day } + r).takeLast(120)
+        val a = JSONArray()
+        for (x in keep) a.put(JSONObject().put("d", x.day).put("t", x.thing).put("o", x.outcome).put("h", x.helped).put("p", x.pulled).put("n", x.next))
+        put("reflections", a.toString())
+        if (r.next.isNotBlank()) { nextStep = r.next; nextStepFrom = r.day }
+    }
+    fun reflectedToday(): Boolean = reflections.any { it.day == planDay() }
+    fun deleteReflections() { put("reflections", "[]"); nextStep = ""; nextStepFrom = "" }
     /** Your if-then plan: "When I feel the pull, I'll ..." */
     var urgePlan: String get() = str("urge_plan"); set(v) = put("urge_plan", v.trim().take(80))
 
@@ -319,6 +414,8 @@ object Store {
         set(v) = put("checkin_starts", JSONArray(v.distinct().sorted().map { it.toString() }).toString())
     var checkInLength: Int get() = int("checkin_len", 20); set(v) = putI("checkin_len", v)
     val checkIns: List<Window> get() = checkInStarts.map { Window(it, (it + checkInLength) % (24 * 60)) }
+    /** Hold check-in apps' notifications until the next check-in time (needs Notification access). */
+    var batchNotifications: Boolean get() = bool("batch_notif", false); set(v) = putB("batch_notif", v)
 
     /** Ask "How are you feeling?" on the pause screen. */
     var askFeeling: Boolean get() = bool("ask_feeling", false); set(v) = putB("ask_feeling", v)
@@ -396,6 +493,12 @@ object Store {
         } catch (_: Exception) { 1 }
     }
 
+    /** A new install (or after "Erase everything"): a plain, calm background to start with. */
+    private fun freshStart() {
+        installDay = dayKey()
+        if (!p.contains("wallpaper")) wallpaper = false
+    }
+
     /** "Erase everything": back to a fresh install. Rules, counters, sessions and names are all gone. */
     fun eraseAll() {
         synchronized(book) {
@@ -403,7 +506,7 @@ object Store {
             bookLoaded = true
             lastSavedSessions = null
             p.edit().clear().commit()
-            installDay = dayKey()
+            freshStart()
         }
     }
 

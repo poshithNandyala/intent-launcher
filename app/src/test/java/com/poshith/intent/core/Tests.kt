@@ -18,8 +18,9 @@ private fun sit(
     opens: Int = 0, session: Boolean = false, protected: Boolean = false, focusUntil: Long = 0,
     wd: Window? = null, strict: Boolean = false, minute: Int = 12 * 60, recent: Boolean = false,
     isBreak: Boolean = false, morningUntil: Long = 0, checkIns: List<Window> = emptyList(), basic: Boolean = false,
+    strictMode: Boolean = false, override: Boolean = false,
 ) = Situation(
-    checkIns = checkIns, focusIsBasic = basic,
+    checkIns = checkIns, focusIsBasic = basic, strictMode = strictMode, sessionOverride = override,
     nowWallMs = 1_000_000L, minuteOfDay = minute, focusUntilWallMs = focusUntil, focusIsBreak = isBreak,
     morningUntilWallMs = morningUntil, windDown = wd,
     windDownStrict = strict, opensToday = opens, hasActiveSession = session, protectedApp = protected,
@@ -43,7 +44,21 @@ fun main() {
     check("basic phone beats an active session", (Policy.decide(mindful, sit(session = true, focusUntil = Long.MAX_VALUE / 2, basic = true)) as? Decision.Blocked)?.reason == BlockReason.BASIC)
     check("break beats an active session", (Policy.decide(Rule(Mode.NORMAL), sit(session = true, focusUntil = 2_000_000L, isBreak = true)) as? Decision.Blocked)?.reason == BlockReason.BREAK)
     check("one-time unlock opens blocked", Policy.decide(Rule(Mode.BLOCKED), sit(session = true)) == Decision.Open)
-    check("session beats wind-down", Policy.decide(mindful, sit(wd = Window(22 * 60, 6 * 60), minute = 23 * 60, session = true)) == Decision.Open)
+    check("gentle wind-down lets a running session finish", Policy.decide(mindful, sit(wd = Window(22 * 60, 6 * 60), minute = 23 * 60, session = true)) == Decision.Open)
+
+    // --- firm boundaries: in Strict mode (or strict wind-down) quiet hours end an ordinary session;
+    //     a session unlocked past a stop on purpose keeps its minutes
+    val night = Window(22 * 60, 6 * 60)
+    check("strict mode: wind-down ends a running session", (Policy.decide(mindful, sit(wd = night, minute = 23 * 60, session = true, strictMode = true)) as? Decision.Blocked)?.reason == BlockReason.WIND_DOWN)
+    check("strict wind-down ends a running session", (Policy.decide(mindful, sit(wd = night, minute = 23 * 60, session = true, strict = true)) as? Decision.Blocked)?.reason == BlockReason.WIND_DOWN)
+    check("an unlock past a stop survives firm wind-down", Policy.decide(mindful, sit(wd = night, minute = 23 * 60, session = true, strictMode = true, override = true)) == Decision.Open)
+    check("a one-time unlock of a blocked app survives firm wind-down", Policy.decide(Rule(Mode.BLOCKED), sit(wd = night, minute = 23 * 60, session = true, strict = true, override = true)) == Decision.Open)
+    check("strict mode: morning quiet ends a running session", (Policy.decide(mindful, sit(morningUntil = 1_500_000L, session = true, strictMode = true)) as? Decision.Blocked)?.reason == BlockReason.MORNING)
+    check("strict mode: a running session outside quiet hours goes on", Policy.decide(mindful, sit(wd = night, minute = 12 * 60, session = true, strictMode = true)) == Decision.Open)
+    check("strict mode still pauses at the start of wind-down", (Policy.decide(mindful, sit(wd = night, minute = 23 * 60, strictMode = true)) as? Decision.Blocked)?.reason == BlockReason.WIND_DOWN)
+    check("check-in apps rest in wind-down too", (Policy.decide(Rule(Mode.BATCHED), sit(wd = night, minute = 23 * 60, checkIns = listOf(Window(22 * 60 + 30, 23 * 60 + 30)))) as? Decision.Blocked)?.reason == BlockReason.WIND_DOWN)
+    check("check-in apps open in their window outside wind-down", Policy.decide(Rule(Mode.BATCHED), sit(wd = night, minute = 18 * 60 + 40, checkIns = listOf(Window(18 * 60 + 30, 18 * 60 + 50)))) == Decision.Open)
+    check("gentle wind-down still spares normal apps", Policy.decide(Rule(Mode.NORMAL), sit(wd = night, minute = 23 * 60, strictMode = true)) == Decision.Open)
 
     // --- which changes make an app easier to open (those wait)
     check("blocked to essential is looser", Mode.ESSENTIAL.isLooserThan(Mode.BLOCKED))
@@ -70,7 +85,7 @@ fun main() {
     check("morning quiet pauses mindful", m is Decision.Blocked && m.reason == BlockReason.MORNING && m.untilWallMs == 1_500_000L)
     check("morning quiet spares normal", Policy.decide(Rule(Mode.NORMAL), sit(morningUntil = 1_500_000L)) == Decision.Open)
     check("morning quiet over", Policy.decide(mindful, sit(morningUntil = 900_000L)) is Decision.Pause)
-    check("session beats morning", Policy.decide(mindful, sit(morningUntil = 1_500_000L, session = true)) == Decision.Open)
+    check("gentle morning quiet lets a running session finish", Policy.decide(mindful, sit(morningUntil = 1_500_000L, session = true)) == Decision.Open)
 
     // --- check-in times (batched apps)
     val noonWindows = listOf(Window(12 * 60 + 30, 12 * 60 + 50), Window(18 * 60 + 30, 18 * 60 + 50))
@@ -105,6 +120,32 @@ fun main() {
     c.set(2026, Calendar.NOVEMBER, 1, 2, 0, 0)
     end.timeInMillis = wd.endsAfter(c.timeInMillis)
     check("ends same morning", end.get(Calendar.DAY_OF_MONTH) == 1 && end.get(Calendar.HOUR_OF_DAY) == 6)
+
+    // --- schedule changes: which ones loosen (those wait, and Strict mode keeps them for tomorrow)
+    val wdOld = Window(22 * 60 + 30, 6 * 60 + 30)
+    check("an earlier, longer wind-down is stricter", !Schedule.windDownLooser(wdOld, Window(22 * 60, 7 * 60)))
+    check("a later wind-down start is looser", Schedule.windDownLooser(wdOld, Window(23 * 60, 6 * 60 + 30)))
+    check("an earlier wind-down end is looser", Schedule.windDownLooser(wdOld, Window(22 * 60 + 30, 6 * 60)))
+    check("start == end covers nothing: looser", Schedule.windDownLooser(wdOld, Window(22 * 60 + 30, 22 * 60 + 30)))
+    check("no longer crossing midnight is looser", Schedule.windDownLooser(wdOld, Window(21 * 60, 23 * 60 + 59)))
+    check("turning wind-down off is looser", Schedule.windDownLooser(wdOld, null))
+    check("turning it on is stricter", !Schedule.windDownLooser(null, wdOld))
+    check("from an empty window anything is stricter", !Schedule.windDownLooser(Window(600, 600), Window(60, 120)))
+    check("the same window isn't looser", !Schedule.windDownLooser(wdOld, Window(22 * 60 + 30, 6 * 60 + 30)))
+    val twoTimes = Schedule.checkIns(listOf(12 * 60 + 30, 18 * 60 + 30), 20)
+    check("three check-ins instead of two is looser", Schedule.checkInsLooser(twoTimes, Schedule.checkIns(listOf(9 * 60, 13 * 60, 18 * 60), 20)))
+    check("one check-in of the two is stricter", !Schedule.checkInsLooser(twoTimes, Schedule.checkIns(listOf(18 * 60 + 30), 20)))
+    check("a shorter check-in is stricter", !Schedule.checkInsLooser(twoTimes, Schedule.checkIns(listOf(12 * 60 + 30, 18 * 60 + 30), 15)))
+    check("a longer check-in is looser", Schedule.checkInsLooser(twoTimes, Schedule.checkIns(listOf(12 * 60 + 30, 18 * 60 + 30), 30)))
+    check("a check-in moved is looser", Schedule.checkInsLooser(twoTimes, Schedule.checkIns(listOf(12 * 60 + 30, 19 * 60), 20)))
+    val lateCheck = Schedule.checkIns(listOf(23 * 60 + 50), 20)
+    check("check-ins across midnight: longer is looser", Schedule.checkInsLooser(lateCheck, Schedule.checkIns(listOf(23 * 60 + 50), 30)))
+    check("check-ins across midnight: inside is stricter", !Schedule.checkInsLooser(lateCheck, listOf(Window(23 * 60 + 55, 5))))
+    check("check-ins from none is looser", Schedule.checkInsLooser(emptyList(), twoTimes))
+    check("budget: more minutes or none is looser", Limits.budgetLooser(60, 90) && Limits.budgetLooser(60, 0))
+    check("budget: fewer minutes, or one from none, is stricter", !Limits.budgetLooser(60, 45) && !Limits.budgetLooser(0, 45) && !Limits.budgetLooser(60, 60))
+    check("override reasons are known", SessionBook.isOverride(SessionBook.WHY_CODE) && SessionBook.isOverride("One-time unlock") &&
+        !SessionBook.isOverride("Reply to someone") && !SessionBook.isOverride("") && !SessionBook.isOverride(null))
 
     // --- pause escalation and limits
     fun pause(opens: Int, recent: Boolean = false) = (Policy.decide(mindful, sit(opens = opens, recent = recent)) as Decision.Pause).pauseMs
@@ -184,8 +225,12 @@ fun main() {
     check("quotes are short", Quotes.all.all { it.text.length in 12..130 })
     check("quotes are distinct", Quotes.all.map { it.text }.toSet().size == Quotes.all.size)
     check("a quote a day cycles through all", (0 until Quotes.all.size).map { Quotes.forDay(it) }.toSet().size == Quotes.all.size)
-    check("next wraps around", Quotes.next(Quotes.all.last()) == Quotes.all.first())
-    check("a quote every 30 s cycles through all", (0 until Quotes.all.size).map { Quotes.forMoment(it * 30_000L, 30_000L) }.toSet().size == Quotes.all.size)
+    check("quotes keep their notes short", Quotes.all.all { it.note.length <= 200 })
+    val dayMs = 86_400_000L
+    check("the quote's day turns over at local midnight", Quotes.localDay(dayMs - 1, 0) == 0 && Quotes.localDay(dayMs, 0) == 1 &&
+        Quotes.localDay(dayMs - 3_600_000L, 3_600_000) == 1)
+    check("a pinned quote stays for its week", Quotes.today(5, 2, 10_000L, 9_000L) == Quotes.all[2])
+    check("after its week it's one a day again", Quotes.today(5, 2, 10_000L, 10_000L) == Quotes.forDay(5) && Quotes.today(5, -1, 0L, 0L) == Quotes.forDay(5))
 
     // --- Shorts and Reels: which apps, which scrolls count
     check("youtube is shorts", Feed.of("com.google.android.youtube") == Feed.SHORTS)
@@ -287,6 +332,14 @@ fun main() {
     check("the code matches, typed loosely", Strict.matches(code.lowercase().replace("-", " "), stored))
     check("a wrong code doesn't", !Strict.matches("AAAA-AAAA", stored) && !Strict.matches("", stored) && !Strict.matches(code, ""))
     check("only a hash is kept", stored.length == 64 && !stored.contains(Strict.normalize(code)))
+    val eod = 24 * h
+    check("used up: open tomorrow, not when a short lock ends", Strict.opensAt(true, 10 * h + 30 * min, 10 * h, eod) == eod)
+    check("used up, a lock past midnight: open when it ends", Strict.opensAt(true, eod + h, 23 * h, eod) == eod + h)
+    check("used up, no lock: tomorrow", Strict.opensAt(true, 0L, 10 * h, eod) == eod)
+    check("not used up, locked: when the lock ends", Strict.opensAt(false, 11 * h, 10 * h, eod) == 11 * h)
+    check("not used up, an old lock: open now", Strict.opensAt(false, 9 * h, 10 * h, eod) == 0L)
+    check("opens again: words", Strict.whenWords(eod, eod) { "T" } == "tomorrow" && Strict.whenWords(eod + h, eod) { "01:00" } == "tomorrow at 01:00" &&
+        Strict.whenWords(11 * h, eod) { "11:00" } == "at 11:00")
     check("what's left never goes below zero", Strict.left(5, 3) == 2 && Strict.left(5, 9) == 0 && Strict.left(0, 0) == 0)
     check("the lock words say what's next", Strict.nextLockWords(1).contains("30 minutes") && Strict.nextLockWords(2).contains("2 hours") &&
         Strict.nextLockWords(3).contains("rest of the day"))

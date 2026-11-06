@@ -259,8 +259,12 @@ class ReelsGuardService : AccessibilityService() {
         inFeed = null
         performGlobalAction(GLOBAL_ACTION_BACK)
         if (attempt <= 4) {
-            val at = android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(Store.lockUntil))
-            toast("${feed.many} are locked until $at. The rest of ${feed.app} works.")
+            // When they really open again: once today's number is used, that's tomorrow, whatever the lock says.
+            val wall = System.currentTimeMillis()
+            val eod = Store.endOfDay(wall)
+            val opens = com.poshith.intent.core.Strict.opensAt(Stats.shortVideosToday() >= Store.reelsAllowToday(), Store.lockUntil, wall, eod)
+            val at = com.poshith.intent.core.Strict.whenWords(opens, eod) { android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(it)) }
+            toast("${feed.many} are closed until ${at.removePrefix("at ")}. The rest of ${feed.app} still works.")
         }
         h.postDelayed({
             if (!Store.locked() || playerScreen(feed, pkg) == null) return@postDelayed

@@ -7,18 +7,19 @@
 - **No internet.** The app does not request the `INTERNET` permission, so Android won't let it open a network connection. You can confirm this in *Settings › Apps › Intent › Permissions* or in [the manifest](app/src/main/AndroidManifest.xml).
 - **No accounts, ads, analytics, crash reporters or trackers.** The app uses no third-party libraries at all.
 - **No backups.** Intent opts out of Android's cloud backup and phone-to-phone transfer ([rules](app/src/main/res/xml/data_extraction_rules.xml)), so its data doesn't leave the phone that way either. The trade-off: on a new phone, setup starts fresh.
-- **It can't read your screen.** Focus Guard (the optional accessibility service) is set to `canRetrieveWindowContent="false"` ([config](app/src/main/res/xml/focus_guard.xml)), so Android doesn't give it your messages, text or anything else you see. It receives one kind of event, "a new window came to the front", and keeps only that app's package name (for example `com.instagram.android`).
-- **The Shorts & Reels guard sees view names, never text.** It's a second, separate accessibility service, also optional and off until you turn it on ([config](app/src/main/res/xml/reels_guard.xml)). Android tells it only about scrolling inside YouTube and Instagram (`packageNames`), nothing from any other app. To tell a swipe through Shorts or Reels from scrolling comments, it looks at the resource names of the view that scrolled and the views around it (like `reel_recycler`) and its size on screen. It never reads text, captions, comments or messages, and keeps only a count.
+- **Focus Guard can't read your screen.** Focus Guard (the optional accessibility service) is set to `canRetrieveWindowContent="false"` ([config](app/src/main/res/xml/focus_guard.xml)), so Android doesn't give it your messages, text or anything else you see. It receives one kind of event, "a new window came to the front", and keeps only that app's package name (for example `com.instagram.android`).
+- **The Shorts & Reels guard reads view names, never text.** It's a second, separate accessibility service, also optional, experimental and off until you turn it on ([config](app/src/main/res/xml/reels_guard.xml)). Android tells it only about scrolling and screen changes inside YouTube and Instagram (`packageNames`), nothing from any other app. Unlike Focus Guard, Android lets it look at those two apps' screens (`canRetrieveWindowContent="true"`), because telling the full-screen Shorts or Reels player from comments needs the names of the views on screen. Intent's code uses only those resource names (like `reel_recycler`) and their size on screen. It never reads text, captions, comments or messages, and keeps only an estimated count.
 
 ## What stays on your phone
 
 All of it lives in the app's private storage (one SharedPreferences file). Other apps can't read it.
 
-- Your choices: home apps, custom names, hidden apps, each app's rule (essential, mindful, check-in, blocked) and your settings.
-- What you typed: today's one thing and your if-then plan.
+- Your choices: home apps, custom names, hidden apps, each app's rule (essential, use less, check-in, blocked) and your settings.
+- What you typed: today's one thing, its first step, what might get in the way and your plan for it, your if-then plan for the pull, and (if you use the evening look-back) a few words a day: did it happen, what helped, what pulled you away, tomorrow's first step. The last 120 look-backs are kept; *Settings › Your plan* exports them as text (you choose where to share them) or deletes them all.
+- The quote you pinned, if any, and until when.
 - Small counters per day for the last 35 days: pauses shown, "Not now" taps, sessions started, "just checking" taps, and (with the Shorts & Reels guard) how many Shorts and Reels you swiped to. Older days are deleted automatically.
-- Current sessions: which mindful app, the minutes and the purpose you picked ("Reply to someone"), minutes used. A session is deleted when it ends, and all of them after a reboot.
-- If you allow **usage access**: Intent reads Android's own usage statistics on demand to count unlocks and minutes in mindful apps. It doesn't copy that history anywhere.
+- Current sessions: which app, the minutes and the purpose you picked ("Reply to someone"), minutes used. A session is deleted when it ends, and all of them after a reboot.
+- If you allow **usage access**: Intent reads Android's own usage statistics on demand to count unlocks and minutes in the apps you want to use less. It doesn't copy that history anywhere.
 
 Your answer to "How are you feeling?" is never saved. It only changes the suggestion on the pause screen you're looking at.
 
@@ -28,12 +29,12 @@ Your answer to "How are you feeling?" is never saved. It only changes the sugges
 |---|---|
 | Home app role | To be your home screen. |
 | Query installed apps (`<queries>`) | To list the apps you can choose from and open them. |
-| Accessibility (Focus Guard, optional) | To notice when a mindful app opens from a notification, recents or a link, to count session minutes, and to close the app when they're used. During a real break it keeps the notification shade closed. Also used for double-tap to lock and swipe down for notifications. |
-| Close other apps' background processes | When a session's minutes are up, Intent closes the app; on Android 13 and older it also ends the app's background process (newer Android only lets an app end its own). Without Notification access, it briefly takes audio focus so nothing keeps playing. |
-| Accessibility (Shorts & Reels guard, optional) | To notice when you start swiping through YouTube Shorts or Instagram Reels, count those swipes and show the pause. Told only about scrolling in those two apps. |
-| Usage access (optional) | Unlock count and minutes in mindful apps on the home screen and in Your week. |
-| Notifications (optional) | A "your minutes are up" reminder when Focus Guard is off. Intent sends nothing else. |
-| Notification access (optional) | During a real break: sets every notification that isn't a call (or an alarm) aside, and they come back by themselves after the break. When Intent closes an app (time's up, or the Shorts pause), it also pauses that app's own video or music player, so your music in other apps keeps playing; for this it sees which apps are playing, not what. Intent doesn't keep, copy or send any of it. |
+| Accessibility (Focus Guard, optional) | To notice when an app you want to use less opens from a notification, recents or a link, to count session minutes, and to close the app when they're used. During a real break it keeps the notification shade closed. Also used for double-tap to lock and swipe down for notifications. |
+| Close other apps' background processes | When a session's minutes are up, Intent closes the app; on Android 13 and older it also ends the app's background process (newer Android only lets an app end its own). Closing it without "user leaving" keeps most apps from popping out into a little window. Without Notification access Intent leaves sound alone, rather than risk stopping your music or directions. |
+| Accessibility (Shorts & Reels guard, optional) | To notice when you start swiping through YouTube Shorts or Instagram Reels, estimate how many you've swiped and show the pause. Told only about those two apps, and reads view names, never text. |
+| Usage access (optional) | Screen time, unlocks and minutes in the apps you want to use less, when you tap the screen time and in Your week. Asked for when you first tap it. |
+| Notifications (optional) | A "your minutes ended" reminder when Focus Guard is off or stops mid-session. Intent sends nothing else: no motivational notifications. |
+| Notification access (optional) | During a real break: sets every notification that isn't a call (or an alarm) aside, and they come back by themselves after the break. If you turn it on for check-in apps, their notifications are set aside the same way until your next check-in time. When Intent closes an app (time's up, or the Shorts pause), it also pauses that app's own video or music player, so your music in other apps keeps playing; for this it sees which apps are playing, not what. Intent doesn't read what notifications say, and doesn't keep, copy or send any of it. |
 | Do Not Disturb access (optional) | During a real break, silence everything except calls and alarms, then put Do Not Disturb back exactly as it was. It can't read your notifications. |
 | Expand status bar | Swipe down on the home screen to open notifications. |
 | Request uninstall | "Uninstall" in an app's long-press menu. Android always asks you to confirm. |

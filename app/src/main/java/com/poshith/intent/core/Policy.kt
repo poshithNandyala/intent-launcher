@@ -13,11 +13,11 @@ import java.util.Calendar
 enum class Mode {
     /** Opens instantly, always, even in Focus and Wind-down (calls, maps, payments, authenticator...). */
     ESSENTIAL,
-    /** Opens instantly. Paused only during a Focus session (or Wind-down if you choose "strict"). */
+    /** Opens instantly. Paused only during a Focus session (or Wind-down if you choose "firm"). */
     NORMAL,
-    /** "Mindful": a short pause screen first, then a session length you choose. */
+    /** "Apps I want to use less": a short pause screen first, then a session length you choose. */
     MINDFUL,
-    /** "Check-in times": opens only in your daily check-in windows (email, Slack, news...). */
+    /** "Check-in times": opens only in your daily check-in windows (email, Slack, news...), and rests in wind-down. */
     BATCHED,
     /** Never opens until you unblock it, or type a deliberate phrase for a 5-minute pass. */
     BLOCKED;
@@ -114,10 +114,14 @@ data class Situation(
     val windDown: Window? = null,
     /** Daily check-in windows for BATCHED apps. */
     val checkIns: List<Window> = emptyList(),
-    /** Strict Wind-down also pauses NORMAL apps, not just mindful ones. */
+    /** Strict Wind-down also pauses NORMAL apps, not just mindful ones, and ends sessions running when it starts. */
     val windDownStrict: Boolean = false,
+    /** Strict mode is on: morning quiet and wind-down end a running session too (see [Policy.decide]). */
+    val strictMode: Boolean = false,
     val opensToday: Int = 0,
     val hasActiveSession: Boolean = false,
+    /** The running session was unlocked past a stop on purpose (a one-time unlock, the emergency code...). */
+    val sessionOverride: Boolean = false,
     /** Phone, settings, keyboards, the permission screens... never paused, whatever the rule says. */
     val protectedApp: Boolean = false,
     /** A session for this app ended a few minutes ago: the next pause is a little longer. */
@@ -143,27 +147,45 @@ object Policy {
             val why = when { s.focusIsBasic -> BlockReason.BASIC; s.focusIsBreak -> BlockReason.BREAK; else -> BlockReason.FOCUS }
             return Decision.Blocked(why, s.focusUntilWallMs)
         }
-        // A session you chose (or a one-time unlock) keeps working across quick app switches.
-        // Tightening an app's rule ends its session (Store.setRule), so a new block applies at once.
-        if (s.hasActiveSession) return Decision.Open
-        if (rule.mode == Mode.BLOCKED) return Decision.Blocked(BlockReason.BLOCKED_RULE, 0)
-        if (rule.mode == Mode.MINDFUL && s.morningUntilWallMs > s.nowWallMs) {
-            return Decision.Blocked(BlockReason.MORNING, s.morningUntilWallMs)
+        // A session keeps working across quick app switches. Tightening an app's rule ends its session
+        // (Store.setRule), so a new block applies at once. When morning quiet or wind-down begins
+        // during a session:
+        //  - a session unlocked past a stop on purpose (one-time unlock, emergency code...) keeps its minutes;
+        //  - Gentle: an ordinary session may finish ("lets a running session finish");
+        //  - firm (Strict mode, or strict wind-down): it ends there, like any other open.
+        if (s.hasActiveSession) {
+            if (s.sessionOverride) return Decision.Open
+            return quietHours(rule, s, running = true) ?: Decision.Open
         }
+        if (rule.mode == Mode.BLOCKED) return Decision.Blocked(BlockReason.BLOCKED_RULE, 0)
+        quietHours(rule, s, running = false)?.let { return it }
         if (rule.mode == Mode.BATCHED) {
             if (s.checkIns.any { it.contains(s.minuteOfDay) }) return Decision.Open
             val next = s.checkIns.minOfOrNull { it.nextStartAfter(s.nowWallMs) } ?: 0L
             return Decision.Blocked(BlockReason.BATCH, next)
-        }
-        val wd = s.windDown
-        if (wd != null && wd.contains(s.minuteOfDay) && (rule.mode == Mode.MINDFUL || s.windDownStrict)) {
-            return Decision.Blocked(BlockReason.WIND_DOWN, wd.endsAfter(s.nowWallMs))
         }
         if (rule.mode == Mode.MINDFUL) {
             val limitReached = rule.dailyOpenLimit > 0 && s.opensToday >= rule.dailyOpenLimit
             return Decision.Pause(pauseMs(rule, s), s.opensToday, limitReached, rule.sessionMin)
         }
         return Decision.Open
+    }
+
+    /**
+     * Morning quiet (apps you want to use less) and wind-down (those, check-in apps, and in strict
+     * wind-down normal apps too). Wind-down wins over a check-in window that falls inside it.
+     * With [running] (a session is already going) only firm boundaries apply.
+     */
+    private fun quietHours(rule: Rule, s: Situation, running: Boolean): Decision.Blocked? {
+        if (rule.mode == Mode.MINDFUL && s.morningUntilWallMs > s.nowWallMs && (!running || s.strictMode)) {
+            return Decision.Blocked(BlockReason.MORNING, s.morningUntilWallMs)
+        }
+        val wd = s.windDown ?: return null
+        val covered = rule.mode == Mode.MINDFUL || rule.mode == Mode.BATCHED || (rule.mode == Mode.NORMAL && s.windDownStrict)
+        if (covered && wd.contains(s.minuteOfDay) && (!running || s.strictMode || s.windDownStrict)) {
+            return Decision.Blocked(BlockReason.WIND_DOWN, wd.endsAfter(s.nowWallMs))
+        }
+        return null
     }
 
     /** Base pause, +2 s for every session after the second today, +5 s right after a session ended. Max 20 s. */

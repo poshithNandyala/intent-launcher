@@ -30,7 +30,9 @@ import com.poshith.intent.data.Store
 
 /* ------------------------------------------------------------------------------------------------
  * Intent's tiny design system. Calm on purpose: one accent, warm neutrals, no badges, generous space.
- * Every color pair used for text meets WCAG AA contrast on its background.
+ * Every text color meets WCAG AA (4.5:1) on every background it's used on, the lighter grays included
+ * (text3 is the faintest: 4.9:1 on dark surface2, 4.7:1 on light surface2), and everything you can
+ * tap is at least 48 dp tall.
  * ---------------------------------------------------------------------------------------------- */
 
 class Palette(
@@ -53,7 +55,7 @@ class Palette(
 val DARK = Palette(
     dark = true,
     bg = 0xFF0C0C0D.toInt(), surface = 0xFF161618.toInt(), surface2 = 0xFF1F1F22.toInt(),
-    text = 0xFFEDEAE4.toInt(), text2 = 0xFF9C9891.toInt(), text3 = 0xFF6E6A64.toInt(),
+    text = 0xFFEDEAE4.toInt(), text2 = 0xFF9C9891.toInt(), text3 = 0xFF908C85.toInt(),
     line = 0x1FFFFFFF, accent = 0xFFA9C5A0.toInt(), onAccent = 0xFF0F1A10.toInt(),
     accentSoft = 0x26A9C5A0, warn = 0xFFE3B07A.toInt(), ripple = 0x22FFFFFF, scrim = 0xB3000000.toInt(),
 )
@@ -61,7 +63,7 @@ val DARK = Palette(
 val LIGHT = Palette(
     dark = false,
     bg = 0xFFF6F3ED.toInt(), surface = 0xFFFFFFFF.toInt(), surface2 = 0xFFECE8E0.toInt(),
-    text = 0xFF1B1A18.toInt(), text2 = 0xFF66635D.toInt(), text3 = 0xFF8E8A83.toInt(),
+    text = 0xFF1B1A18.toInt(), text2 = 0xFF5A5752.toInt(), text3 = 0xFF69665F.toInt(),
     line = 0x1F000000, accent = 0xFF3F6B46.toInt(), onAccent = 0xFFFFFFFF.toInt(),
     accentSoft = 0x1F3F6B46, warn = 0xFF8A5212.toInt(), ripple = 0x1A000000, scrim = 0x80000000.toInt(),
 )
@@ -254,6 +256,18 @@ fun Context.button(label: String, kind: Kind = Kind.PRIMARY, onClick: (View) -> 
     setOnClickListener { if (isEnabled) { it.tick(); onClick(it) } }
 }
 
+/** A small, quiet text action under the buttons ("Emergency code"): small words, still a full 48 dp to tap. */
+fun Context.link(label: String, onClick: (View) -> Unit): TextView = text(label, 14f, P.text2).apply {
+    gravity = Gravity.CENTER
+    minHeight = dp(48)
+    minWidth = dp(48)
+    setPadding(dp(16), 0, dp(16), 0)
+    background = ripple(null, dp(24).toFloat())
+    isClickable = true
+    isFocusable = true
+    setOnClickListener { if (isEnabled) { it.tick(); onClick(it) } }
+}
+
 fun styleButton(b: TextView, kind: Kind, enabled: Boolean) {
     val r = b.context.dp(26).toFloat()
     b.isEnabled = enabled
@@ -298,9 +312,9 @@ class Chip(ctx: Context, label: String, private val pal: Palette = P) : TextView
         textSize = 15f
         typeface = Fonts.regular(ctx)
         gravity = Gravity.CENTER
-        minHeight = ctx.dp(44)
-        minWidth = ctx.dp(44)
-        setPadding(ctx.dp(16), ctx.dp(9), ctx.dp(16), ctx.dp(9))
+        minHeight = ctx.dp(48)
+        minWidth = ctx.dp(48)
+        setPadding(ctx.dp(16), ctx.dp(10), ctx.dp(16), ctx.dp(10))
         isClickable = true
         restyle()
     }

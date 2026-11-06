@@ -42,7 +42,11 @@ object Launch {
     fun decide(ctx: Context, pkg: String): Decision {
         val now = System.currentTimeMillis()
         val rule = Store.rule(pkg)
-        val active = Store.sessions { it.isActive(pkg, SystemClock.elapsedRealtime()) }
+        val elapsed = SystemClock.elapsedRealtime()
+        val (active, unlocked) = Store.sessions { b ->
+            val on = b.isActive(pkg, elapsed)
+            on to (on && com.poshith.intent.core.SessionBook.isOverride(b[pkg]?.intention))
+        }
         val s = Situation(
             nowWallMs = now,
             minuteOfDay = Store.minuteOfDay(now),
@@ -53,8 +57,10 @@ object Launch {
             windDown = Store.windDown,
             checkIns = Store.checkIns,
             windDownStrict = Store.windDownStrict,
+            strictMode = Store.strictActive(),
             opensToday = Stats.sessionsToday(pkg),
             hasActiveSession = active,
+            sessionOverride = unlocked,
             protectedApp = if (Store.breakActive(now)) breakAllowed(ctx, pkg) else isProtected(ctx, pkg),
             recentlyEnded = Store.endedRecently(pkg),
         )
@@ -63,8 +69,8 @@ object Launch {
 
     /** Tap on the home screen or a search result. */
     fun open(a: Activity, app: AppEntry, from: View?) {
-        when (val d = decide(a, app.pkg)) {
-            is Decision.Open -> start(a, app, from)
+        when (decide(a, app.pkg)) {
+            is Decision.Open -> { resumeUnguarded(a, app.pkg); start(a, app, from) }
             else -> GateActivity.show(a, app.pkg, app.key, fromLauncher = true)
         }
     }
@@ -72,9 +78,23 @@ object Launch {
     /** An app known only by package name (tapped before the app list has loaded): same rules. */
     fun openPackage(a: Activity, pkg: String) {
         when (decide(a, pkg)) {
-            is Decision.Open -> if (!startPackage(a, pkg)) toast(a, "Couldn't open it")
+            is Decision.Open -> { resumeUnguarded(a, pkg); if (!startPackage(a, pkg)) toast(a, "Couldn't open it") }
             else -> GateActivity.show(a, pkg, null, fromLauncher = true)
         }
+    }
+
+    /**
+     * Back into an app whose session is still going, with Focus Guard not running: nobody can see when
+     * it's in front, so its minutes run on the clock again and the reminder is set for what's left.
+     * A session always ends, guard or no guard. (Scheduling it again is harmless: same end time.)
+     */
+    private fun resumeUnguarded(ctx: Context, pkg: String) {
+        if (com.poshith.intent.guard.FocusGuardService.running) return
+        val now = SystemClock.elapsedRealtime()
+        val left = Store.sessions { b ->
+            if (!b.isActive(pkg, now)) null else { b.start(pkg, now); b.remainingMs(pkg, now) to (b[pkg]?.allowanceMs ?: 0L) }
+        } ?: return
+        Reminder.scheduleMs(ctx, pkg, left.first, (left.second / 60_000L).toInt())
     }
 
     fun start(ctx: Context, app: AppEntry, from: View? = null) {
@@ -278,15 +298,16 @@ object Launch {
     /** A recommended switch that's off: its name, and how to turn it on. */
     class Missing(val name: String, val turnOn: (Activity) -> Unit)
 
-    /** The recommended switches that are off (or stopped). Setup and the home screen push until they're on. */
+    /**
+     * The switches the home screen mentions when they're off (or stopped): Focus Guard, which the rules
+     * you chose depend on, and in Strict mode the Shorts & Reels guard, which Strict mode's daily number
+     * depends on. Everything else is asked for when you use what needs it (a real break asks for
+     * Notification access, the screen-time numbers ask for Usage access), never nagged about here.
+     */
     fun missingProtections(ctx: Context): List<Missing> {
         val out = ArrayList<Missing>()
         if (guardHealth(ctx) != Health.ON) out += Missing("Focus Guard") { a -> com.poshith.intent.guardSheet(a as com.poshith.intent.ui.BaseActivity) }
-        if (reelsHealth(ctx) != Health.ON) out += Missing("Shorts & Reels guard") { a -> com.poshith.intent.reelsSheet(a as com.poshith.intent.ui.BaseActivity) }
-        if (!(BreakQuietService.hasAccess(ctx) && Dnd.hasAccess(ctx))) out += Missing("Notification access") { a ->
-            if (!BreakQuietService.hasAccess(a)) BreakQuietService.requestAccess(a) else Dnd.requestAccess(a)
-        }
-        if (!com.poshith.intent.data.Usage.hasAccess(ctx)) out += Missing("Usage access") { a -> usageSettings(a) }
+        if (Store.strictActive() && reelsHealth(ctx) != Health.ON) out += Missing("Shorts & Reels guard") { a -> com.poshith.intent.reelsSheet(a as com.poshith.intent.ui.BaseActivity) }
         return out
     }
 

@@ -5,7 +5,6 @@ import android.graphics.Canvas
 import android.graphics.Paint
 import android.os.Handler
 import android.os.Looper
-import android.os.SystemClock
 import android.util.TypedValue
 import android.view.Gravity
 import android.view.View
@@ -16,16 +15,15 @@ import android.widget.TextView
 import com.poshith.intent.data.Store
 import com.poshith.intent.guard.Launch
 import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.min
 
 /**
  * The real-break screen, shown instead of the home screen: lights down, the time left in plain words
- * (hours and minutes, no ticking seconds to watch), and a way to call.
- * Nothing else to tap, nothing to scroll. Always dark, whatever the theme: a break is lights-out.
+ * (hours and minutes, no ticking seconds to watch), a way to call, and a one-minute reset if the break
+ * feels long. Nothing to scroll. Always dark, whatever the theme: a break is lights-out.
  *
- * Layout: the breathing circle gets only the height left above the quote and the buttons and sizes
- * itself to fit, so on a short screen or with large text it shrinks instead of covering them.
+ * Layout: the circle gets only the height left above the quote and the buttons and sizes itself to
+ * fit, so on a short screen or with large text it shrinks instead of covering them.
  */
 class BreakScreen(private val a: BaseActivity, private val onOver: () -> Unit) {
     private val k = DARK
@@ -77,7 +75,7 @@ class BreakScreen(private val a: BaseActivity, private val onOver: () -> Unit) {
         val page = a.vbox()
         view.addView(page, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
 
-        // Top: the breathing circle, centred in the space that's left.
+        // Top: the circle, centred in the space that's left.
         face.addView(ring, FrameLayout.LayoutParams(a.dp(296), a.dp(296), Gravity.CENTER))
         col.addView(a.text("REAL BREAK", 12.5f, k.text3, Fonts.medium(a)).apply { letterSpacing = 0.16f; gravity = Gravity.CENTER }, lp())
         col.addView(words, lp().apply { topMargin = a.dp(12) })
@@ -87,7 +85,7 @@ class BreakScreen(private val a: BaseActivity, private val onOver: () -> Unit) {
 
         // Below it, never under it: one line to sit with, then calling and the way out (held).
         val bottom = a.vbox(Gravity.CENTER_HORIZONTAL)
-        val q = com.poshith.intent.core.Quotes.forMoment(System.currentTimeMillis())
+        val q = Store.todaysQuote()
         bottom.addView(a.text("“${q.text}”", 15f, k.text2, Fonts.light(a)).apply {
             gravity = Gravity.CENTER; setLineSpacing(0f, 1.3f); setPadding(a.dp(8), 0, a.dp(8), 0); maxLines = 4
             breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
@@ -101,6 +99,8 @@ class BreakScreen(private val a: BaseActivity, private val onOver: () -> Unit) {
         bottom.addView(a.text("Only calls get through. Everything else waits for you.", 13.5f, k.text3).apply {
             gravity = Gravity.CENTER; setPadding(0, a.dp(14), 0, a.dp(2))
         }, lp())
+        // If the break feels long: one minute of something else, off the screen.
+        bottom.addView(a.link("A one-minute reset") { a.resetSheet() }.apply { setTextColor(k.text2) }, lp())
         bottom.addView(HoldButton(a, "Hold to end the break", 6000, k) { onOver() }.apply {
             background = null
             setTextColor(k.text3)
@@ -151,26 +151,20 @@ class BreakScreen(private val a: BaseActivity, private val onOver: () -> Unit) {
 }
 
 /**
- * A slow breathing circle (8 seconds in and out): a soft glow and a fine outline that swell and settle
- * together. Still, if animations are off.
+ * A still circle: a soft glow and a fine outline. It used to breathe; a break screen has nothing to
+ * watch now, so it holds still (and there's no motion that never ends).
  */
 class PulseRing(ctx: Context, private val color: Int) : View(ctx) {
     private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = ctx.dp(1.5f).toFloat() }
     private val fill = Paint(Paint.ANTI_ALIAS_FLAG)
-    private val start = SystemClock.uptimeMillis()
-    private val moving = ctx.animationsOn()
     var running = false
-        set(v) { field = v; invalidate() }
 
     override fun onDraw(c: Canvas) {
-        val t = if (moving) ((SystemClock.uptimeMillis() - start) % 8000L) / 8000f else 0.5f
-        val s = ((1 - cos(t * 2 * Math.PI)) / 2).toFloat()
-        val r = min(width, height) / 2f * (0.82f + 0.16f * s)
-        fill.color = withAlpha(color, 0.035f + 0.05f * s)
-        stroke.color = withAlpha(color, 0.16f + 0.2f * s)
+        val r = min(width, height) / 2f * 0.9f
+        fill.color = withAlpha(color, 0.06f)
+        stroke.color = withAlpha(color, 0.26f)
         c.drawCircle(width / 2f, height / 2f, r, fill)
         c.drawCircle(width / 2f, height / 2f, r - stroke.strokeWidth, stroke)
-        if (running && moving) postInvalidateDelayed(33)
     }
 
     private fun withAlpha(c: Int, a: Float) = (c and 0x00FFFFFF) or ((a.coerceIn(0f, 1f) * 255).toInt() shl 24)

@@ -42,6 +42,22 @@ object Strict {
         else -> "Go back again and they're locked for the rest of the day."
     }
 
+    /**
+     * When Shorts and Reels open again (0 = they're open). Once today's number is [usedUp] that's
+     * tomorrow, whatever a lock says; a lock that runs past midnight keeps them closed until it ends.
+     */
+    fun opensAt(usedUp: Boolean, lockUntil: Long, now: Long, endOfDay: Long): Long {
+        val lock = if (lockUntil > now) lockUntil else 0L
+        return if (usedUp) maxOf(endOfDay, lock) else lock
+    }
+
+    /** "tomorrow", "at 14:30" or "tomorrow at 01:30", for [at] from [opensAt]. */
+    fun whenWords(at: Long, endOfDay: Long, time: (Long) -> String): String = when {
+        at == endOfDay -> "tomorrow"
+        at > endOfDay -> "tomorrow at ${time(at)}"
+        else -> "at ${time(at)}"
+    }
+
     /** What's left of today's number after [count] ([allow] a day): never below zero. */
     fun left(allow: Int, count: Int): Int = (allow - count).coerceAtLeast(0)
 

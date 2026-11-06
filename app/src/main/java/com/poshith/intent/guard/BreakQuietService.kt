@@ -11,14 +11,17 @@ import android.telecom.TelecomManager
 import com.poshith.intent.data.Store
 
 /**
- * Real break, notifications (optional, needs "Notification access").
+ * Notification access (optional): real breaks, and check-in apps' notifications if you ask for it.
  *
  * What it does:  during a real break, every notification that isn't a call is set aside (snoozed),
  *                so nothing shows: not in the shade, not on the lock screen, not as a sound. Calls, missed
  *                calls and alarms stay. Snoozed notifications come back on their own a few minutes after
- *                the break ends; nothing is deleted.
+ *                the break ends; nothing is deleted. If you turn it on (Settings › Check-in times), a
+ *                check-in app's notifications are set aside the same way until your next check-in time:
+ *                a few batches a day instead of a stream (Fitz et al., 2019).
+ *                It also lets Intent pause exactly the app it closes (see Closer.silence).
  * What it can't: reply to, open or send anything, or go online (Intent has no internet permission).
- *                Outside a break it does nothing at all.
+ *                It doesn't read or keep what notifications say.
  */
 class BreakQuietService : NotificationListenerService() {
 
@@ -42,8 +45,9 @@ class BreakQuietService : NotificationListenerService() {
             if (!Launch.tryStart(ctx, i, null)) Launch.tryStart(ctx, android.content.Intent("android.settings.ACTION_NOTIFICATION_LISTENER_SETTINGS"), "Open Settings > Notifications > Notification access")
         }
 
-        /** A break just started: set aside what's already showing. */
+        /** A break just started (or batching was turned on): set aside what's already showing. */
         fun breakStarted() { instance?.let { s -> try { s.activeNotifications?.forEach { s.consider(it) } } catch (_: Exception) {} } }
+        fun sweep() = breakStarted()
 
         /** Allowed in Android's settings and actually connected right now. */
         val connected: Boolean get() = instance != null
@@ -75,13 +79,23 @@ class BreakQuietService : NotificationListenerService() {
     }
 
     private fun consider(sbn: StatusBarNotification) {
-        if (!Store.breakActive()) return
         if (keep(sbn)) return
-        val left = Store.focusUntil - System.currentTimeMillis()
-        if (left <= 0) return
-        // Set aside, never deleted: a notification Android won't snooze stays where it is (Do Not Disturb
-        // still keeps it silent and out of sight, and the shade stays closed).
-        try { snoozeNotification(sbn.key, left.coerceAtMost(CHUNK_MS)) } catch (_: Exception) {}
+        val now = System.currentTimeMillis()
+        if (Store.breakActive(now)) {
+            val left = Store.focusUntil - now
+            if (left <= 0) return
+            // Set aside, never deleted: a notification Android won't snooze stays where it is (Do Not Disturb
+            // still keeps it silent and out of sight, and the shade stays closed).
+            try { snoozeNotification(sbn.key, left.coerceAtMost(CHUNK_MS)) } catch (_: Exception) {}
+            return
+        }
+        // Check-in apps, if you chose to batch them: their notifications wait for your next check-in time.
+        if (!Store.batchNotifications || sbn.isOngoing) return
+        if (Store.rule(sbn.packageName).mode != com.poshith.intent.core.Mode.BATCHED) return
+        val wins = Store.checkIns
+        if (wins.any { it.contains(Store.minuteOfDay(now)) }) return
+        val next = wins.minOfOrNull { it.nextStartAfter(now) } ?: return
+        try { snoozeNotification(sbn.key, (next - now).coerceAtLeast(60_000L)) } catch (_: Exception) {}
     }
 
     /** Calls ring and show, alarms can be stopped; Intent's own break notice stays. Nothing else. */

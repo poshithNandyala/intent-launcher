@@ -9,9 +9,11 @@ import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import com.poshith.intent.core.Feed
 import com.poshith.intent.core.Quotes
 import com.poshith.intent.core.Sitting
+import com.poshith.intent.core.Strict
 import com.poshith.intent.data.Stats
 import com.poshith.intent.data.Store
 import com.poshith.intent.guard.Closer
@@ -25,26 +27,24 @@ import com.poshith.intent.ui.animationsOn
 import com.poshith.intent.ui.button
 import com.poshith.intent.ui.dp
 import com.poshith.intent.ui.emergencyLink
-import com.poshith.intent.ui.fillCost
-import com.poshith.intent.ui.identityLine
+import com.poshith.intent.ui.link
 import com.poshith.intent.ui.nextThing
 import com.poshith.intent.ui.lp
-import com.poshith.intent.ui.ripple
 import com.poshith.intent.ui.scroller
 import com.poshith.intent.ui.space
 import com.poshith.intent.ui.text
-import com.poshith.intent.ui.tick
 import com.poshith.intent.ui.vbox
 import com.poshith.intent.ui.vflex
 
 /**
  * The pause after YouTube Shorts or Instagram Reels, shown by the Shorts & Reels guard when you start
  * swiping (and again after the number you chose). The app has already been closed behind it, so
- * nothing plays on. Today's count, one blunt line, a big way out, and a small way back in.
+ * nothing plays on. One heading, one factual line, what you planned to do next, a big way out, and a
+ * small way back in.
  *
  * In Strict mode there's no "more": at the first swipe of a sitting it says what's left today, and
- * past today's number it's a stop. Going back to Shorts or Reels then locks them (30 minutes, then 2
- * hours, then the day), only them: the rest of YouTube and Instagram keeps working. It says so up front.
+ * past today's number it's a stop until tomorrow. Only Shorts and Reels close: the rest of YouTube and
+ * Instagram keeps working. Counts come from watching scrolls, so they're estimates ("about").
  */
 class ReelsActivity : BaseActivity() {
 
@@ -113,177 +113,131 @@ class ReelsActivity : BaseActivity() {
     override fun onBackRoot() = closeApp()
 
     private fun build() {
-        if (strict && left >= 0) { buildHeadsUp(); return }
-        if (strict) { buildStop(); return }
-        host.removeAllViews()
-        h.removeCallbacksAndMessages(null)
-        val allow = Store.reelsAllow
-        val s = ReelsGuardService.sitting(feed)
-        val today = Stats.shortVideosToday(feed)
-
-        val col = vbox(Gravity.CENTER_HORIZONTAL)
-        host.addView(col, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        onBars { b -> col.setPadding(dp(28) + b.left, b.top + dp(32), dp(28) + b.right, b.bottom + dp(20)) }
-
-        col.addView(vflex())
-        col.addView(text(feed.many.uppercase(), 14f, P.text3, Fonts.medium(this)).apply { letterSpacing = 0.08f; gravity = Gravity.CENTER })
-        val (head, why) = when {
-            ask == Sitting.Ask.MORE -> "That's ${s.swipes} in a row" to "Each one felt like nothing. Together they're an evening."
-            allow == 0 -> "${feed.many} are off" to "You chose this while calm. The one you opened was fine; the swipe is where the hour goes."
-            else -> "Was that the one you came for?" to "The next swipe is where the hour goes."
+        when {
+            strict && left >= 0 -> buildHeadsUp()
+            strict -> buildStop()
+            else -> buildGentle()
         }
-        col.addView(text(head, 30f, P.text, Fonts.medium(this)).apply {
-            gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0); breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
-        }, lp())
-        col.addView(text(why, 16f, P.text2).apply {
-            gravity = Gravity.CENTER; setLineSpacing(0f, 1.25f); setPadding(0, dp(12), 0, 0)
-            breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
-        }, lp())
-        // Today's number, plainly. It turns warm once it's a lot.
-        val noun = if (today == 1) feed.one else feed.many
-        col.addView(text("$today $noun today", 15f, if (today >= 50) P.warn else P.text2, Fonts.medium(this)).apply {
-            gravity = Gravity.CENTER; setPadding(0, dp(18), 0, 0)
-        }, lp())
-
-        // A blunt line here, not a gentle quote: this is the moment a soft one gets skimmed.
-        col.addView(text(Quotes.bluntFor(System.currentTimeMillis()), 19f, P.text, Fonts.medium(this)).apply {
-            gravity = Gravity.CENTER; setLineSpacing(0f, 1.25f); setPadding(0, dp(30), 0, 0)
-            breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
-        }, lp())
-        nextThing()?.let { col.addView(text(it, 15f, P.text2).apply { gravity = Gravity.CENTER; setPadding(0, dp(14), 0, 0) }, lp()) }
-        col.addView(vflex())
-
-        col.addView(button("Close ${feed.app}", Kind.PRIMARY) { closeApp() }, lp())
-        col.addView(space(6))
-        col.addView(button("Keep ${feed.app}, without ${feed.many}", Kind.PLAIN) { leaveFeed() }, lp())
-        if (allow > 0) col.addView(more(allow, s.waitSec()), lp().apply { topMargin = dp(2) })
-
-        if (animationsOn()) { col.alpha = 0f; col.animate().alpha(1f).setDuration(220).start() }
-    }
-
-    /** Strict mode: a stop, not a question. What happened, what the next one costs, where to go now. */
-    private fun buildStop() {
-        host.removeAllViews()
-        h.removeCallbacksAndMessages(null)
-        val now = System.currentTimeMillis()
-        val locked = until > now
-        val at = if (locked) android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(until)) else ""
-        val today = Stats.shortVideosToday()
-
-        val col = vbox(Gravity.CENTER_HORIZONTAL)
-        val sc = scroller(col)
-        host.addView(sc, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
-        onBars { b -> col.setPadding(dp(28) + b.left, b.top + dp(32), dp(28) + b.right, b.bottom + dp(20)) }
-
-        col.addView(vflex())
-        col.addView(text("STRICT MODE · ${feed.many.uppercase()}", 13.5f, P.text3, Fonts.medium(this)).apply { letterSpacing = 0.08f; gravity = Gravity.CENTER })
-        val head = when {
-            locked -> "${feed.many} are locked until $at"
-            Store.reelsAllowToday() == 0 -> "${feed.many} are off"
-            else -> "That's all your ${feed.many} for today"
-        }
-        col.addView(text(head, 30f, P.text, Fonts.medium(this)).apply {
-            gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0); breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
-        }, lp())
-        val why = when {
-            locked && stopN == 0 -> "Only ${feed.many} are locked: the rest of ${feed.app} works. They open again at $at."
-            locked -> "You went back after being stopped. Only ${feed.many} are locked: the rest of ${feed.app} works. " +
-                com.poshith.intent.core.Strict.nextLockWords(stopN)
-            else -> "You chose this while calm. ${com.poshith.intent.core.Strict.nextLockWords(stopN)}"
-        }
-        col.addView(text(why, 16f, P.text2).apply {
-            gravity = Gravity.CENTER; setLineSpacing(0f, 1.25f); setPadding(0, dp(12), 0, 0)
-            breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
-        }, lp())
-        col.addView(text(Quotes.bluntFor(now), 19f, P.text, Fonts.medium(this)).apply {
-            gravity = Gravity.CENTER; setLineSpacing(0f, 1.25f); setPadding(0, dp(26), 0, 0)
-            breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
-        }, lp())
-        val noun = if (today == 1) feed.one else feed.many
-        col.addView(text("$today $noun today", 15f, if (today >= 50) P.warn else P.text2, Fonts.medium(this)).apply {
-            gravity = Gravity.CENTER; setPadding(0, dp(18), 0, 0)
-        }, lp())
-        val cost = text("", 14f, P.text3).apply { gravity = Gravity.CENTER; setLineSpacing(0f, 1.2f); setPadding(0, dp(6), 0, 0) }
-        col.addView(cost, lp())
-        fillCost(cost)
-        nextThing()?.let { col.addView(text(it, 16f, P.text).apply { gravity = Gravity.CENTER; setPadding(0, dp(20), 0, 0) }, lp()) }
-        identityLine()?.let { col.addView(text(it, 14.5f, P.text3).apply { gravity = Gravity.CENTER; setPadding(0, dp(6), 0, 0) }, lp()) }
-        col.addView(vflex())
-
-        col.addView(button("Close ${feed.app}", Kind.PRIMARY) { closeApp() }, lp().apply { topMargin = dp(20) })
-        // The rest of the app is fine: back into it, out of the feed.
-        col.addView(space(6))
-        col.addView(button("Keep ${feed.app}, without ${feed.many}", Kind.PLAIN) { leaveFeed() }, lp())
-        emergencyLink("It ends the lock and gives you ${com.poshith.intent.core.Strict.EMERGENCY_MORE} more ${feed.many} today.") {
-            Store.lockUntil = 0
-            Store.addReelsBonus(com.poshith.intent.core.Strict.EMERGENCY_MORE)
-            ReelsGuardService.keepGoing(feed)
-            leaving = true
-            Closer.reopen(this, pkg)
-            finish()
-        }?.let { col.addView(it, lp().apply { topMargin = dp(4) }) }
-
-        if (animationsOn()) { col.alpha = 0f; col.animate().alpha(1f).setDuration(220).start() }
     }
 
     /**
-     * Strict mode, the first swipe of a sitting: what's left of today's number and what happens after.
-     * Not an extension (nothing is added): you chose the number while calm.
+     * Every Shorts and Reels screen has the same calm shape: a small label, one heading, one factual
+     * line, then (if you set one) what you planned to do next, and the way out as the biggest button.
+     * [extra] adds anything specific in between; [actions] adds the buttons.
      */
-    private fun buildHeadsUp() {
+    private fun frame(label: String, head: String, fact: String, extra: (LinearLayout) -> Unit = {}, actions: (LinearLayout) -> Unit) {
         host.removeAllViews()
         h.removeCallbacksAndMessages(null)
-        val now = System.currentTimeMillis()
         val col = vbox(Gravity.CENTER_HORIZONTAL)
         val sc = scroller(col)
         host.addView(sc, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         onBars { b -> col.setPadding(dp(28) + b.left, b.top + dp(32), dp(28) + b.right, b.bottom + dp(20)) }
 
         col.addView(vflex())
-        col.addView(text("STRICT MODE · ${feed.many.uppercase()}", 13.5f, P.text3, Fonts.medium(this)).apply { letterSpacing = 0.08f; gravity = Gravity.CENTER })
-        val noun = if (left == 1) feed.one else feed.many
-        val head = if (left == 0) "That was your last ${feed.one} today" else "$left $noun left today"
+        col.addView(text(label.uppercase(), 13.5f, P.text3, Fonts.medium(this)).apply { letterSpacing = 0.08f; gravity = Gravity.CENTER })
         col.addView(text(head, 30f, P.text, Fonts.medium(this)).apply {
             gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0); breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
         }, lp())
-        col.addView(text((if (left == 0) "The next swipe closes ${feed.many}. " else "When they're gone, ${feed.many} close. ") +
-            "Go back after that and they lock for 30 minutes.", 16f, P.text2).apply {
+        col.addView(text(fact, 16f, P.text2).apply {
             gravity = Gravity.CENTER; setLineSpacing(0f, 1.25f); setPadding(0, dp(12), 0, 0)
             breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
         }, lp())
-        col.addView(text(Quotes.bluntFor(now), 19f, P.text, Fonts.medium(this)).apply {
-            gravity = Gravity.CENTER; setLineSpacing(0f, 1.25f); setPadding(0, dp(26), 0, 0)
+        extra(col)
+        // A blunt line only if you asked for them (Settings › Shorts and Reels).
+        if (Store.bluntLines) col.addView(text(Quotes.bluntFor(System.currentTimeMillis()), 18f, P.text, Fonts.medium(this)).apply {
+            gravity = Gravity.CENTER; setLineSpacing(0f, 1.25f); setPadding(0, dp(24), 0, 0)
             breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
         }, lp())
-        nextThing()?.let { col.addView(text(it, 16f, P.text).apply { gravity = Gravity.CENTER; setPadding(0, dp(20), 0, 0) }, lp()) }
-        identityLine()?.let { col.addView(text(it, 14.5f, P.text3).apply { gravity = Gravity.CENTER; setPadding(0, dp(6), 0, 0) }, lp()) }
+        nextThing()?.let { col.addView(text(it, 16f, P.text).apply { gravity = Gravity.CENTER; setLineSpacing(0f, 1.2f); setPadding(0, dp(22), 0, 0) }, lp()) }
         col.addView(vflex())
+        actions(col)
+        if (animationsOn()) { col.alpha = 0f; col.animate().alpha(1f).setDuration(220).start() }
+    }
 
-        col.addView(button("Close ${feed.app}", Kind.PRIMARY) { closeApp() }, lp().apply { topMargin = dp(20) })
+    /** Today's count, plainly and honestly: the guard estimates it from scrolling, so "about". */
+    private fun countLine(col: LinearLayout, n: Int, both: Boolean) {
+        val what = if (both) "Shorts and Reels" else if (n == 1) feed.one else feed.many
+        col.addView(text("About $n $what today", 14.5f, P.text2).apply { gravity = Gravity.CENTER; setPadding(0, dp(16), 0, 0) }, lp())
+    }
+
+    /** The way out first, then back into the app without its feed. */
+    private fun exits(col: LinearLayout, top: Int = 20) {
+        col.addView(button("Close ${feed.app}", Kind.PRIMARY) { closeApp() }, lp().apply { topMargin = dp(top) })
         col.addView(space(6))
         col.addView(button("Keep ${feed.app}, without ${feed.many}", Kind.PLAIN) { leaveFeed() }, lp())
-        col.addView(text(if (left == 0) "Watch this last one" else "Watch ($left left)", 13.5f, P.text3).apply {
-            gravity = Gravity.CENTER; minHeight = dp(44); setPadding(dp(16), 0, dp(16), 0)
-            background = ripple(null, dp(20).toFloat())
-            setOnClickListener { it.tick(); keepGoing() }
-        }, lp().apply { topMargin = dp(2) })
-        if (animationsOn()) { col.alpha = 0f; col.animate().alpha(1f).setDuration(220).start() }
+    }
+
+    /** Gentle mode: a question at the first swipe, and after the number you chose. */
+    private fun buildGentle() {
+        val allow = Store.reelsAllow
+        val s = ReelsGuardService.sitting(feed)
+        val (head, fact) = when {
+            ask == Sitting.Ask.MORE -> "That's about ${s.swipes} in a row" to "You chose to use this less. What did you come here for?"
+            allow == 0 -> "${feed.many} are off" to "You chose this earlier. The rest of ${feed.app} still works."
+            else -> "Was that the one you came for?" to "The next swipe is where the time goes."
+        }
+        frame(feed.many, head, fact, extra = { countLine(it, Stats.shortVideosToday(feed), both = false) }) { col ->
+            exits(col)
+            if (allow > 0) col.addView(more(allow, s.waitSec()), lp().apply { topMargin = dp(2) })
+        }
+    }
+
+    /**
+     * Strict mode: a stop, not a question. Today's number is used (or off, or locked), when they open
+     * again, and where to go now. Once today's number is used they're closed until tomorrow, whatever
+     * a lock says, so the screen never promises an earlier time.
+     */
+    private fun buildStop() {
+        val now = System.currentTimeMillis()
+        val eod = Store.endOfDay(now)
+        val usedUp = Stats.shortVideosToday() >= Store.reelsAllowToday()
+        val opens = Strict.opensAt(usedUp, until, now, eod)
+        val time = { ms: Long -> android.text.format.DateFormat.getTimeFormat(this).format(java.util.Date(ms)) }
+        val head = when {
+            Store.reelsAllowToday() == 0 -> "${feed.many} are off today"
+            usedUp -> "That's today's ${feed.many}"
+            else -> "${feed.many} are closed for now"
+        }
+        val fact = (if (opens > 0) "Available again ${Strict.whenWords(opens, eod, time)}. " else "") +
+            "You chose this limit earlier. The rest of ${feed.app} still works."
+        frame("Strict mode · ${feed.many}", head, fact, extra = { countLine(it, Stats.shortVideosToday(), both = true) }) { col ->
+            exits(col)
+            emergencyLink("It gives you ${Strict.EMERGENCY_MORE} more Shorts and Reels today.") {
+                Store.lockUntil = 0
+                Store.addReelsBonus(Strict.EMERGENCY_MORE)
+                ReelsGuardService.keepGoing(feed)
+                leaving = true
+                Closer.reopen(this, pkg)
+                finish()
+            }?.let { col.addView(it, lp().apply { topMargin = dp(4) }) }
+        }
+    }
+
+    /**
+     * Strict mode, the first swipe of a sitting: what's left of today's number, and what happens after.
+     * Not an extension (nothing is added): you chose the number earlier.
+     */
+    private fun buildHeadsUp() {
+        val noun = if (left == 1) feed.one else feed.many
+        val head = if (left == 0) "That was your last ${feed.one} today" else "$left $noun left today"
+        val fact = (if (left == 0) "The next swipe closes ${feed.many} until tomorrow." else "Then ${feed.many} close until tomorrow.") +
+            " The rest of ${feed.app} still works."
+        frame("Strict mode · ${feed.many}", head, fact) { col ->
+            exits(col)
+            col.addView(link(if (left == 0) "Watch this last one" else "Watch ($left left)") { keepGoing() }, lp().apply { topMargin = dp(2) })
+        }
     }
 
     /** The small way on. Free the first time; after that it waits a little longer each time. */
     private fun more(n: Int, waitSec: Int): View {
-        val t = text("", 13.5f, P.text3).apply {
-            gravity = Gravity.CENTER; minHeight = dp(40); setPadding(dp(16), 0, dp(16), 0)
-            background = ripple(null, dp(20).toFloat())
-        }
         val label = "Watch $n more"
+        val t = link(label) { keepGoing() }
         var left = waitSec
         val tickRun = object : Runnable {
             override fun run() {
                 if (left <= 0) {
                     t.text = label
                     t.isEnabled = true
-                    t.setOnClickListener { it.tick(); keepGoing() }
                 } else {
                     t.text = "$label in $left"
                     t.isEnabled = false

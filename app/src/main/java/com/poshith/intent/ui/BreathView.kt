@@ -1,40 +1,49 @@
 package com.poshith.intent.ui
 
-import android.animation.ValueAnimator
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.RectF
 import android.os.SystemClock
 import android.view.View
-import android.view.animation.LinearInterpolator
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
 
 /**
  * One slow breath: the circle grows for 4 s (in) and shrinks for 4 s (out). The thin outer arc fills
- * over the pause, so you can see when "Open" becomes available. The pause itself is timed in real
- * time (not by animation), so it lasts exactly as long as your rule says even if you changed
- * Android's animation speed. With animations turned off, the circle stays still.
+ * over the pause, so you can see when "Open" becomes available.
+ *
+ * Everything runs on real time, not on Android's animation speed: the pause lasts exactly as long as
+ * your rule says, and the words ("Breathe in", "Breathe out") follow the clock too. With animations
+ * turned off (reduce motion) the circle stays still and the words don't pace you: "Breathe naturally".
+ * When the pause is over the circle settles and stays still.
  */
 class BreathView(ctx: Context) : View(ctx) {
-    var onPhase: ((inhale: Boolean) -> Unit)? = null
+
+    enum class Phase(val words: String) { IN("Breathe in"), OUT("Breathe out"), NATURAL("Breathe naturally") }
+
+    var onPhase: ((Phase) -> Unit)? = null
     var onDone: (() -> Unit)? = null
 
     private val cycleMs = 8_000L
-    private var breath = 0.6f
     private var progress = 0f
     private var startedAt = 0L
     private var pauseMs = 1L
-    private var lastInhale: Boolean? = null
-    private var breathAnim: ValueAnimator? = null
+    private var moving = true
+    private var lastPhase: Phase? = null
     private val rect = RectF()
 
-    private val done = Runnable { progress = 1f; invalidate(); onDone?.invoke() }
+    /** The pause is over: the circle settles and stays still (no motion that never ends). */
+    private val done = Runnable { progress = 1f; settled = true; removeCallbacks(ticker); invalidate(); onDone?.invoke() }
+    private var settled = false
+
+    /** The progress arc and the words, from the clock (20 times a second is plenty for both). */
     private val ticker = object : Runnable {
         override fun run() {
-            progress = ((SystemClock.uptimeMillis() - startedAt).toFloat() / pauseMs).coerceIn(0f, 1f)
+            val elapsed = SystemClock.uptimeMillis() - startedAt
+            progress = (elapsed.toFloat() / pauseMs).coerceIn(0f, 1f)
+            phase(if (!moving) Phase.NATURAL else if (elapsed % cycleMs < cycleMs / 2) Phase.IN else Phase.OUT)
             invalidate()
             if (progress < 1f) postDelayed(this, 50)
         }
@@ -53,35 +62,26 @@ class BreathView(ctx: Context) : View(ctx) {
         importantForAccessibility = IMPORTANT_FOR_ACCESSIBILITY_NO
     }
 
+    private fun phase(p: Phase) {
+        if (p == lastPhase) return
+        lastPhase = p
+        onPhase?.invoke(p)
+    }
+
     fun start(pauseMs: Long) {
         stop()
         this.pauseMs = pauseMs.coerceAtLeast(1)
         startedAt = SystemClock.uptimeMillis()
         progress = 0f
-        if (context.animationsOn()) {
-            breathAnim = ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = cycleMs
-                repeatCount = ValueAnimator.INFINITE
-                interpolator = LinearInterpolator()
-                addUpdateListener {
-                    val f = it.animatedValue as Float
-                    breath = 0.5f - 0.5f * cos(2 * PI * f).toFloat()
-                    val inhale = f < 0.5f
-                    if (inhale != lastInhale) { lastInhale = inhale; onPhase?.invoke(inhale) }
-                    invalidate()
-                }
-                start()
-            }
-        } else {
-            breath = 0.7f
-            onPhase?.invoke(true)
-        }
+        lastPhase = null
+        settled = false
+        moving = context.animationsOn()
         post(ticker)
         postDelayed(done, this.pauseMs)
     }
 
+    /** Stops the breathing (the words stay as they are); the pause screen calls it once it's done. */
     fun stop() {
-        breathAnim?.cancel(); breathAnim = null
         removeCallbacks(ticker)
         removeCallbacks(done)
     }
@@ -99,8 +99,13 @@ class BreathView(ctx: Context) : View(ctx) {
         canvas.drawCircle(cx, cy, outer, ring)
         rect.set(cx - outer, cy - outer, cx + outer, cy + outer)
         if (progress > 0f) canvas.drawArc(rect, -90f, 360f * progress, false, arc)
-        val r = outer * (0.42f + 0.46f * breath)
-        canvas.drawCircle(cx, cy, r, glow)
+        val breathing = moving && startedAt > 0 && !settled
+        val breath = if (breathing) {
+            val f = ((SystemClock.uptimeMillis() - startedAt) % cycleMs).toFloat() / cycleMs
+            0.5f - 0.5f * cos(2 * PI * f).toFloat()
+        } else 0.7f
+        canvas.drawCircle(cx, cy, outer * (0.42f + 0.46f * breath), glow)
         canvas.drawCircle(cx, cy, context.dp(4).toFloat(), core)
+        if (breathing && isAttachedToWindow) postInvalidateOnAnimation()
     }
 }

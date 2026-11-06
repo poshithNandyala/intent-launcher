@@ -19,6 +19,7 @@ import com.poshith.intent.core.Limits
 import com.poshith.intent.core.Mode
 import com.poshith.intent.core.Purpose
 import com.poshith.intent.core.Rule
+import com.poshith.intent.core.SessionBook
 import com.poshith.intent.data.Apps
 import com.poshith.intent.data.Stats
 import com.poshith.intent.data.Store
@@ -34,8 +35,6 @@ import com.poshith.intent.ui.Flow
 import com.poshith.intent.ui.Fonts
 import com.poshith.intent.ui.HoldButton
 import com.poshith.intent.ui.nextThing
-import com.poshith.intent.ui.identityLine
-import com.poshith.intent.ui.fillCost
 import com.poshith.intent.ui.emergencyLink
 import com.poshith.intent.ui.Kind
 import com.poshith.intent.ui.P
@@ -198,9 +197,9 @@ class GateActivity : BaseActivity() {
         // One slow breath.
         val breath = BreathView(this)
         col.addView(breath, LinearLayout.LayoutParams(dp(196), dp(196)).apply { topMargin = dp(22) })
-        val phase = text("Breathe in", 16f, P.text2).apply { gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) }
+        val phase = text("", 16f, P.text2).apply { gravity = Gravity.CENTER; setPadding(0, dp(10), 0, 0) }
         col.addView(phase, lp())
-        breath.onPhase = { inhale -> phase.text = if (inhale) "Breathe in" else "Breathe out" }
+        breath.onPhase = { p -> phase.text = p.words }
         breath.start(d.pauseMs)
 
         // How are you feeling? (affect labeling + Dr. Yousef's "cognitive pause")
@@ -256,10 +255,10 @@ class GateActivity : BaseActivity() {
             mChips += c; mFlow.addView(c)
         }
         after.addView(mFlow, lp().apply { topMargin = dp(if (askWhy) 18 else 26) })
-        if (left != null) line(after, "$left of ${Store.budgetMin} min left today for all mindful apps", P.text3, 14f, 12)
+        if (left != null) line(after, "$left of ${Store.budgetMin} min left today, for all the apps you want to use less", P.text2, 14f, 12)
 
         val plan = Store.urgePlan
-        if (plan.isNotBlank()) line(after, "Your plan: when I feel the pull, I'll $plan.", P.text3, 14f, 22)
+        if (plan.isNotBlank()) line(after, "Your plan: when I feel the pull, I'll $plan.", P.text2, 14f, 22)
 
         bar.addView(button("Not now", Kind.PRIMARY) { notNow() }, lp())
         val open = button("", Kind.OUTLINE) { proceed(minutes, purpose?.label ?: "") }.apply { visibility = View.GONE }
@@ -269,6 +268,7 @@ class GateActivity : BaseActivity() {
 
         breath.onDone = {
             pauseDone = true
+            breath.onPhase = null
             phase.text = "Ready when you are"
             reveal(after)
             reveal(open)
@@ -295,8 +295,8 @@ class GateActivity : BaseActivity() {
             Feeling.Action.CALL -> actions.addView(button("Call someone instead", Kind.QUIET) {
                 Stats.notNow(pkg); leaving = true; Launch.dialer(this); finish()
             }, lp().apply { topMargin = dp(10) })
-            Feeling.Action.ONE_THING -> if (Store.oneThing.isNotBlank()) {
-                actions.addView(text("Your one thing: ${Store.oneThing}", 15f, P.accent, Fonts.medium(this)).apply {
+            Feeling.Action.ONE_THING -> Store.todayIntention()?.let { one ->
+                actions.addView(text("Your one thing: $one", 15f, P.accent, Fonts.medium(this)).apply {
                     gravity = Gravity.CENTER; setPadding(0, dp(8), 0, 0)
                 }, lp())
             }
@@ -315,44 +315,34 @@ class GateActivity : BaseActivity() {
         styleButton(b, Kind.OUTLINE, enabled = ready)
     }
 
-    /**
-     * The end of every stop screen: what to do instead (your one thing, or your plan), who you said you
-     * are, and in Strict mode what the scrolling costs in your own numbers.
-     */
+    /** The end of every stop screen: what you planned to do next (today's one thing, or your plan). */
     private fun stopLines(col: LinearLayout) {
         nextThing()?.let { line(col, it, P.text, 16f, 22) }
-        identityLine()?.let { line(col, it, P.text3, 14.5f, 8) }
-        if (Store.strictActive()) {
-            val cost = line(col, "", P.text3, 14f, 14)
-            fillCost(cost)
-        }
     }
 
     /** The way past a stop: in Strict mode only the emergency code; otherwise the given [gentle] one. */
-    private fun escape(gentle: View?, what: String = "It opens $label for 10 minutes.", onCode: () -> Unit = { proceed(10, "Emergency code") }): View? =
+    private fun escape(gentle: View?, what: String = "It opens $label for 10 minutes.", onCode: () -> Unit = { proceed(10, SessionBook.WHY_CODE) }): View? =
         if (Store.strictActive()) emergencyLink(what, onCode) else gentle
 
     /** Minutes left of today's budget for all mindful apps, or null when there's none. */
     private fun budgetLeft(): Int? = Limits.budgetLeft(Store.budgetMin, Stats.day().plannedMin)
 
     private fun buildBudget(col: LinearLayout) {
-        title(col, "TODAY'S BUDGET", label)
-        line(col, "Your chosen limit is reached: ${Store.budgetMin} minutes for all your mindful apps today.", P.text2, 16f, 14)
-        line(col, "Tomorrow it starts fresh.", P.text3, 15f, 6)
+        title(col, label.uppercase(), "Today's allowance is finished")
+        line(col, "Available tomorrow. Calls and your essential apps still work.", P.text2, 16f, 14)
         stopLines(col)
         bar.addView(button("Not now", Kind.PRIMARY) { notNow() }, lp())
         escape(button("Unlock 5 minutes", Kind.PLAIN) {
-            confirmPhrase("Unlock $label?", "You set this budget while you were calm. If you really need it, type the phrase.",
-                "open ${label.lowercase()}", "Open for 5 min") { proceed(5, "Past my budget") }
+            confirmPhrase("Unlock $label?", "You set this budget earlier, on purpose. If you really need it, type the phrase.",
+                "open ${label.lowercase()}", "Open for 5 min") { proceed(5, SessionBook.WHY_BUDGET) }
         })?.let { bar.addView(it, lp().apply { topMargin = dp(6) }) }
     }
 
-    /** Several sessions close together: mindful apps rest for a few minutes. */
+    /** Several sessions close together: these apps rest for a few minutes. */
     private fun buildRest(col: LinearLayout, until: Long) {
         val at = DateFormat.getTimeFormat(this).format(Date(until))
-        title(col, "A SHORT REST", label)
-        line(col, "${Limits.REST_AFTER_SESSIONS} sessions in ${Limits.REST_WINDOW_MS / 60_000} minutes. Mindful apps rest until $at.", P.text2, 16f, 14)
-        if (nextThing() == null) line(col, "A good moment to look up from the screen.", P.text3, 15f, 10)
+        title(col, "A SHORT REST", "Back at $at")
+        line(col, "${Limits.REST_AFTER_SESSIONS} sessions in ${Limits.REST_WINDOW_MS / 60_000} minutes, so the apps you want to use less rest for a few minutes.", P.text2, 16f, 14)
         stopLines(col)
         bar.addView(button("Put the phone down", Kind.PRIMARY) {
             notNow()
@@ -364,16 +354,15 @@ class GateActivity : BaseActivity() {
             ?.let { bar.addView(it, lp().apply { topMargin = dp(8) }) }
     }
 
-    private fun buildLimit(col: LinearLayout, d: Decision.Pause) {
+    private fun buildLimit(col: LinearLayout, @Suppress("UNUSED_PARAMETER") d: Decision.Pause) {
         val r = Store.rule(pkg)
-        title(col, "DAILY LIMIT", label)
-        line(col, "That's ${r.dailyOpenLimit} sessions today: the limit you set while you were calm.", P.text2, 16f, 14)
-        line(col, "Tomorrow it starts fresh.", P.text3, 15f, 6)
+        title(col, label.uppercase(), "That's today's ${r.dailyOpenLimit} sessions")
+        line(col, "You chose this limit earlier. Available tomorrow.", P.text2, 16f, 14)
         stopLines(col)
         bar.addView(button("Not now", Kind.PRIMARY) { notNow() }, lp())
         escape(button("Unlock 5 minutes", Kind.PLAIN) {
             confirmPhrase("Unlock $label?", "You set a limit for a reason. If you really need it, type the phrase.",
-                "open ${label.lowercase()}", "Open for 5 min") { proceed(5, "Past my limit") }
+                "open ${label.lowercase()}", "Open for 5 min") { proceed(5, SessionBook.WHY_LIMIT) }
         })?.let { bar.addView(it, lp().apply { topMargin = dp(6) }) }
     }
 
@@ -382,40 +371,41 @@ class GateActivity : BaseActivity() {
         when (d.reason) {
             BlockReason.FOCUS -> {
                 title(col, "FOCUS", "$label can wait")
-                line(col, "You're in a focus session until $until. Calls and your essentials still work.", P.text2, 16f, 14)
+                line(col, "Focus until $until. Calls and your essentials still work.", P.text2, 16f, 14)
                 actions(col, "Back to focus", HoldButton(this, "Hold to end focus", 3000) { Store.focusUntil = 0; build() })
             }
             BlockReason.BREAK -> {
                 title(col, "REAL BREAK", "Not now")
-                line(col, (if (until.isNotEmpty()) "You're on a break until $until. " else "You're on a break. ") + "Only calls get through: everything else waits for you.", P.text2, 16f, 14)
+                line(col, (if (until.isNotEmpty()) "You're on a break until $until. " else "You're on a break. ") + "Only calls get through; everything else waits.", P.text2, 16f, 14)
                 actions(col, "Back to my break", HoldButton(this, "Hold to end the break", 6000) { com.poshith.intent.guard.Break.end(this); build() })
             }
             BlockReason.BASIC -> {
                 title(col, "BASIC PHONE", "$label is off")
-                line(col, "Basic phone is on: only your essentials open, like a phone from before feeds. Calls and messages work as always.", P.text2, 16f, 14)
+                line(col, "Basic phone is on: only your essentials open. Calls and messages work as always.", P.text2, 16f, 14)
                 actions(col, "Back", HoldButton(this, "Hold to turn basic phone off", 3000) { Store.focusUntil = 0; build() })
             }
             BlockReason.MORNING -> {
                 title(col, "MORNING QUIET", "Not yet")
-                line(col, "Mindful apps rest until $until. The first minutes of your day are yours, before anyone tells you what to think about.", P.text2, 16f, 14)
+                line(col, "$label opens at $until. The first minutes of your day are yours.", P.text2, 16f, 14)
                 stopLines(col)
                 actions(col, "OK, later", escape(HoldButton(this, "Hold to skip this morning", 3000) { Store.morningUntil = 0; build() },
                     "It ends morning quiet for today.") { Store.morningUntil = 0; build() })
             }
             BlockReason.BATCH -> {
                 title(col, "CHECK-IN TIMES", "$label can wait")
-                line(col, "It opens at your check-in times. Next one: $until. Batching messages like this lowers stress (Kushlev & Dunn, 2015).", P.text2, 16f, 14)
+                line(col, "It opens at your next check-in, $until.", P.text2, 16f, 14)
+                stopLines(col)
                 actions(col, "OK, later", escape(phraseUnlock()))
             }
             BlockReason.WIND_DOWN -> {
                 title(col, "WIND-DOWN", "Time to rest")
-                line(col, "Mindful apps are paused until $until. Screens before bed push sleep later.", P.text2, 16f, 14)
+                line(col, "$label opens at $until. Calls, alarms and your essentials still work.", P.text2, 16f, 14)
                 stopLines(col)
                 actions(col, "Back", escape(phraseUnlock()))
             }
             BlockReason.BLOCKED_RULE -> {
                 title(col, "BLOCKED", label)
-                line(col, "You blocked this app. You can change that in Settings (it takes a short wait), or unlock it once.", P.text2, 16f, 14)
+                line(col, "You blocked this app. You can change that in Settings, or unlock it once.", P.text2, 16f, 14)
                 actions(col, "Back", escape(phraseUnlock()))
             }
         }
@@ -423,7 +413,7 @@ class GateActivity : BaseActivity() {
 
     private fun phraseUnlock(): View = button("Unlock 5 minutes", Kind.PLAIN) {
         confirmPhrase("Unlock $label?", "This opens it for 5 minutes, then the rule applies again.",
-            "open ${label.lowercase()}", "Open for 5 min") { proceed(5, "One-time unlock") }
+            "open ${label.lowercase()}", "Open for 5 min") { proceed(5, SessionBook.WHY_UNLOCK) }
     }
 
     private fun actions(@Suppress("UNUSED_PARAMETER") col: LinearLayout, back: String, secondary: View?) {

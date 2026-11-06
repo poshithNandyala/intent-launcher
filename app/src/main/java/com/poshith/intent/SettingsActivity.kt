@@ -17,6 +17,8 @@ import com.poshith.intent.core.Catalog
 import com.poshith.intent.core.Feed
 import com.poshith.intent.core.Mode
 import com.poshith.intent.core.Rule
+import com.poshith.intent.core.Schedule
+import com.poshith.intent.core.Window
 import com.poshith.intent.data.AppEntry
 import com.poshith.intent.data.Apps
 import com.poshith.intent.data.Stats
@@ -35,6 +37,7 @@ import com.poshith.intent.ui.Fonts
 import com.poshith.intent.ui.Kind
 import com.poshith.intent.ui.askEmergencyCode
 import com.poshith.intent.ui.hideKeyboard
+import com.poshith.intent.ui.feedsClosedUntil
 import com.poshith.intent.ui.Overlay
 import com.poshith.intent.ui.P
 import com.poshith.intent.ui.Sheet
@@ -119,7 +122,7 @@ class SettingsActivity : BaseActivity() {
 
     private fun header(title: String, sub: String? = null) {
         val back = text(if (pages.size > 1) "‹  Back" else "‹  Done", 16f, P.text2).apply {
-            setPadding(dp(24), dp(4), dp(24), dp(4)); minHeight = dp(44); gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(24), dp(4), dp(24), dp(4)); minHeight = dp(48); gravity = Gravity.CENTER_VERTICAL
             background = ripple(null); isClickable = true; setOnClickListener { it.tick(); handleBack() }
         }
         col.addView(back, lp(ViewGroup.LayoutParams.WRAP_CONTENT))
@@ -133,6 +136,28 @@ class SettingsActivity : BaseActivity() {
      *  (a switch or chip that already moved goes back). */
     private fun loosen(title: String, message: String, confirmLabel: String = "Yes, change it", action: () -> Unit) =
         confirmLoosen(title, message, confirmLabel, onCancel = { render() }, action = action)
+
+    /** Today's budget: tighter applies now; looser waits a few seconds, or in Strict mode until tomorrow. */
+    private fun pickBudget(v: Int) {
+        val cur = Store.budgetMin
+        if (com.poshith.intent.core.Limits.budgetLooser(cur, v) && !Store.strictActive())
+            loosen("Allow more time?", if (v == 0) "Turns the daily budget off." else "From $cur to $v minutes a day.") { Store.changeBudget(v); render() }
+        else { Store.changeBudget(v); render() }
+    }
+
+    /** Shorts and Reels: the same rule as the budget. */
+    private fun pickReelsAllow(v: Int) {
+        val cur = Store.reelsAllow
+        if (v > cur && !Store.strictActive())
+            loosen("Allow more?", "From ${if (cur == 0) "none" else "$cur"} to $v.") { Store.changeReelsAllow(v); render() }
+        else { Store.changeReelsAllow(v); render() }
+    }
+
+    /** Under a dial, when a looser value chosen in Strict mode is waiting for tomorrow. */
+    private fun pendingNote(key: String, label: (Int) -> String) {
+        val next = Store.tomorrowValue(key) ?: return
+        add(paragraph("From tomorrow: ${label(next)}. Today stays as it is.", 14f, P.accent))
+    }
 
     private fun chips(values: IntArray, current: Int, label: (Int) -> String, onPick: (Int) -> Unit): View {
         val f = Flow(this).apply { setPadding(dp(24), dp(4), dp(24), dp(10)) }
@@ -185,7 +210,7 @@ class SettingsActivity : BaseActivity() {
         add(row("Strict mode", strictSummary(), null) { go("strict") })
         add(row("Home screen apps", "${Store.homeKeys.size} of ${Store.MAX_HOME} · order, names, layout", null) { go("home") })
         add(row("Essentials", "Never paused, even in focus: ${names(Store.packagesWithMode(Mode.ESSENTIAL))}", null) { go("essentials") })
-        add(row("Mindful apps", "Pause first, then a session you choose: ${names(Store.packagesWithMode(Mode.MINDFUL))}", null) { go("mindful") })
+        add(row("Apps I want to use less", "A short pause, then the minutes you choose: ${names(Store.packagesWithMode(Mode.MINDFUL))}", null) { go("mindful") })
         add(row("Check-in times", "Open only at set times: ${names(Store.packagesWithMode(Mode.BATCHED))}", null) { go("checkins") })
         add(row("Blocked", names(Store.packagesWithMode(Mode.BLOCKED)), null) { go("blocked") })
         add(row("Hidden from search", "${Store.hidden.size} hidden", null) { go("hidden") })
@@ -193,7 +218,8 @@ class SettingsActivity : BaseActivity() {
         add(sectionTitle("Your day"))
         add(row("Focus, wind-down and mornings", "Wind-down " + (if (Store.windDownOn) "${timeLabel(Store.windDownStart)}–${timeLabel(Store.windDownEnd)}" else "off") +
             " · morning quiet " + (if (Store.morningQuietMin > 0) "${Store.morningQuietMin} min" else "off"), null) { go("focus") })
-        add(row("Your plan for the pull", Store.urgePlan.ifBlank { "Not set" }, null) { go("plan") })
+        add(row("Your plan", (Store.urgePlan.ifBlank { null }?.let { "When I feel the pull: $it" } ?: "Not set") +
+            if (Store.eveningOn) " · evening look-back on" else "", null) { go("plan") })
         add(sectionTitle("Your phone"))
         add(row("Protection and permissions", when (guardHealth) {
             Launch.Health.ON -> "Focus Guard on"
@@ -255,7 +281,7 @@ class SettingsActivity : BaseActivity() {
         add(sectionTitle("On the home screen"))
         add(toggleRow("Date", null, Store.showDate) { Store.showDate = it })
         add(toggleRow("Screen time", "Today's total under the date; tap it for the details (needs usage access)", Store.showStats) { Store.showStats = it })
-        add(toggleRow("Today's one thing", "Your goal above your apps, once you set one (long-press home)", Store.showOneThing) { Store.showOneThing = it })
+        add(toggleRow("Today's one thing", "What matters today, above your apps. Tap it to plan, change it, or look back on the day.", Store.showOneThing) { Store.showOneThing = it })
         add(toggleRow("Check-in after unlocking", "“What did you pick up your phone for?” Never blocks anything.", Store.checkIn) { Store.checkIn = it })
         add(toggleRow("Lock if I don't answer", "No choice within 15 seconds and the phone locks again. Needs Focus Guard.", Store.lockIfNoAnswer) { Store.lockIfNoAnswer = it })
         add(row("Layout and text size", null, null) { go("appearance") })
@@ -333,11 +359,11 @@ class SettingsActivity : BaseActivity() {
     }
 
     private fun pageMindful() {
-        header("Mindful apps", "A short breath, a question, and a session length you choose. You can still open them, on purpose.")
+        header("Apps I want to use less", "A short pause, and the minutes you choose. You can still open them, on purpose.")
         add(FrameLayout(this).apply {
             setPadding(dp(24), dp(6), dp(24), dp(6))
-            addView(button("Choose mindful apps", Kind.QUIET) {
-                modePicker(Mode.MINDFUL, "Mindful apps", "Apps that pull you in. They'll pause first.", suggestedPull())
+            addView(button("Choose apps", Kind.QUIET) {
+                modePicker(Mode.MINDFUL, "Apps I want to use less", "Apps that pull you in. They'll pause first.", suggestedPull())
             })
         })
         listMode(Mode.MINDFUL)
@@ -351,13 +377,9 @@ class SettingsActivity : BaseActivity() {
         // Across all of them: one budget, and a short rest after sessions close together.
         add(sectionTitle("One budget for all of them"))
         add(paragraph("Every session takes its minutes from one daily total, so moving from one app to another doesn't start over.", 14.5f, P.text3))
-        add(chips(com.poshith.intent.core.Limits.BUDGET_CHOICES, Store.budgetMin, { if (it == 0) "Off" else "$it min" }) { v ->
-            val cur = Store.budgetMin
-            val looser = cur > 0 && (v == 0 || v > cur)
-            if (looser) loosen("Allow more time?", if (v == 0) "Turns the daily budget off." else "From $cur to $v minutes a day.") { Store.budgetMin = v; render() }
-            else { Store.budgetMin = v; render() }
-        })
-        add(toggleRow("A short rest after 3 sessions in 10 minutes", "Mindful apps wait 5 minutes, then open as usual", Store.restOn) { on ->
+        add(chips(com.poshith.intent.core.Limits.BUDGET_CHOICES, Store.budgetMin, { if (it == 0) "Off" else "$it min" }) { v -> pickBudget(v) })
+        pendingNote("budget_min") { if (it == 0) "no daily budget" else "$it min" }
+        add(toggleRow("A short rest after 3 sessions in 10 minutes", "They wait 5 minutes, then open as usual", Store.restOn) { on ->
             if (!on) loosen("Turn off the short rest?", "Sessions close together won't get a rest.") { Store.restOn = false; render() }
             else { Store.restOn = true; render() }
         })
@@ -387,7 +409,7 @@ class SettingsActivity : BaseActivity() {
             }
             render()
         }
-        if (looser) loosen("Make mindful apps easier to open?", "This loosens the rule for every mindful app.") { apply() } else apply()
+        if (looser) loosen("Make these apps easier to open?", "This loosens the rule for every app you want to use less.") { apply() } else apply()
     }
 
     fun suggestedPull(): Set<String> {
@@ -415,12 +437,30 @@ class SettingsActivity : BaseActivity() {
         for ((times, label) in presets) {
             val c = Chip(this, times.joinToString(" · ") { timeLabel(it) }); c.on = Store.checkInStarts == times
             c.contentDescription = label
-            c.setOnClickListener { it.tick(); Store.checkInStarts = times; render() }
+            c.setOnClickListener { it.tick(); changeCheckIns(times, Store.checkInLength) }
             f.addView(c)
         }
         add(f)
         add(sectionTitle("Window length"))
-        add(chips(intArrayOf(15, 20, 30), Store.checkInLength, { "$it min" }) { v -> Store.checkInLength = v; render() })
+        add(chips(intArrayOf(15, 20, 30), Store.checkInLength, { "$it min" }) { v -> changeCheckIns(Store.checkInStarts, v) })
+        if (Store.windDownOn) add(paragraph("Wind-down comes first: a check-in time inside it waits for the morning.", 14f, P.text3))
+        add(sectionTitle("Their notifications"))
+        val access = BreakQuietService.hasAccess(this)
+        add(toggleRow("Hold them until check-in time", (if (access) "" else "Needs Notification access. ") +
+            "They arrive in a few batches a day instead of a stream; nothing is deleted. Calls and alarms are never held. In a trial, batching non-urgent notifications three times a day improved well-being (Fitz et al., 2019).",
+            Store.batchNotifications && access) { on ->
+            if (on && !access) { Store.batchNotifications = true; BreakQuietService.requestAccess(this) }
+            else if (!on) loosen("Let their notifications through again?", "They'll arrive as they come.") { Store.batchNotifications = false; render() }
+            else { Store.batchNotifications = true; BreakQuietService.sweep(); render() }
+        })
+    }
+
+    /** New check-in times or length: more (or moved) windows open these apps more, so they wait like any loosening. */
+    private fun changeCheckIns(starts: List<Int>, length: Int) {
+        fun apply() { Store.checkInStarts = starts; Store.checkInLength = length; render() }
+        val looser = Store.packagesWithMode(Mode.BATCHED).isNotEmpty() &&
+            Schedule.checkInsLooser(Store.checkIns, Schedule.checkIns(starts, length))
+        if (looser) loosen("Open check-in apps more?", "They'd open at times they're closed now.") { apply() } else apply()
     }
 
     private fun pageHidden() {
@@ -447,28 +487,38 @@ class SettingsActivity : BaseActivity() {
     private fun pageFocus() {
         header("Focus, wind-down and mornings")
         add(sectionTitle("Morning quiet"))
-        add(paragraph("Mindful apps rest for the first minutes after your first unlock of the morning, so your first thoughts are your own (Dr. Sahar Yousef's 30/15 rule).", 14.5f))
+        add(paragraph("The apps you want to use less rest for the first minutes after your first unlock of the morning, so your first thoughts are your own (Dr. Sahar Yousef's 30/15 rule). In Strict mode, a session that's running when it starts ends then.", 14.5f))
         add(chips(intArrayOf(0, 15, 30, 60), Store.morningQuietMin, { if (it == 0) "Off" else "$it min" }) { v ->
             if (v < Store.morningQuietMin) loosen("Shorten morning quiet?", "From ${Store.morningQuietMin} to ${if (v == 0) "off" else "$v min"}.") { Store.morningQuietMin = v; render() }
             else { Store.morningQuietMin = v; render() }
         })
         add(sectionTitle("Wind-down"))
-        add(paragraph("At night, mindful apps rest. Screens late in the evening push sleep later (Chang et al., 2015). Alarms, calls and essentials still work.", 14.5f))
+        add(paragraph("At night, the apps you want to use less rest, and so do check-in apps. Screens late in the evening push sleep later (Chang et al., 2015). Alarms, calls and essentials still work.", 14.5f))
         add(toggleRow("Wind-down", null, Store.windDownOn) { on ->
-            if (!on) loosen("Turn off wind-down?", "Mindful apps will open at night again.") { Store.windDownOn = false; render() }
+            if (!on) loosen("Turn off wind-down?", "These apps will open at night again.") { Store.windDownOn = false; render() }
             else { Store.windDownOn = true; render() }
         })
         if (Store.windDownOn) {
-            add(row("Starts", null, timeLabel(Store.windDownStart)) { pickTime(Store.windDownStart) { Store.windDownStart = it; render() } })
-            add(row("Ends", null, timeLabel(Store.windDownEnd)) { pickTime(Store.windDownEnd) { Store.windDownEnd = it; render() } })
-            add(toggleRow("Strict", "Also pause normal apps, not just mindful ones", Store.windDownStrict) { on ->
-                if (!on) loosen("Make wind-down gentler?", "Normal apps will open at night.") { Store.windDownStrict = false; render() }
+            add(row("Starts", null, timeLabel(Store.windDownStart)) { pickTime(Store.windDownStart) { v -> changeWindDown(v, Store.windDownEnd) } })
+            add(row("Ends", null, timeLabel(Store.windDownEnd)) { pickTime(Store.windDownEnd) { v -> changeWindDown(Store.windDownStart, v) } })
+            add(toggleRow("Firm wind-down", "Normal apps rest too, and a session that's running ends when wind-down starts", Store.windDownStrict) { on ->
+                if (!on) loosen("Make wind-down gentler?", "Normal apps will open at night, and a running session can finish.") { Store.windDownStrict = false; render() }
                 else { Store.windDownStrict = true; render() }
             })
+            add(paragraph(if (Store.windDownStrict || Store.strictActive()) "A session that's running when wind-down starts ends then. One you unlocked on purpose keeps its minutes."
+                else "Gentle: a session that's running when wind-down starts can finish its minutes. Firm wind-down (or Strict mode) ends it then.", 14f, P.text3))
         }
         add(sectionTitle("Focus"))
         add(paragraph("Start focus or a screen-free break from the home screen (tap Focus at the bottom). Only essentials open until it ends.", 14.5f))
         add(row("Essentials", names(Store.packagesWithMode(Mode.ESSENTIAL)), null) { go("essentials") })
+    }
+
+    /** New wind-down hours: if they leave any minute it covers now uncovered, that's a loosening and it waits. */
+    private fun changeWindDown(start: Int, end: Int) {
+        fun apply() { Store.windDownStart = start; Store.windDownEnd = end; render() }
+        if (Schedule.windDownLooser(Store.windDown, Window(start, end)))
+            loosen("Shorten wind-down?", "Apps would open in some of the hours it covers now (${timeLabel(Store.windDownStart)}–${timeLabel(Store.windDownEnd)}).") { apply() }
+        else apply()
     }
 
     private fun pickTime(current: Int, onPick: (Int) -> Unit) {
@@ -477,7 +527,7 @@ class SettingsActivity : BaseActivity() {
     }
 
     private fun pagePlan() {
-        header("Your plan for the pull", "An if-then plan: “When I feel the pull, I'll…”. Planning the response in advance had a medium-to-large effect on reaching goals across 94 studies.")
+        header("Your plan", "An if-then plan for the pull: “When I feel the pull, I'll…”. Planning the response in advance had a medium-to-large effect on reaching goals across 94 studies.")
         val ideas = listOf("take three slow breaths", "drink a glass of water", "stand up and stretch", "read one page of a book",
             "message someone I care about", "do my one thing for two minutes", "step outside for a minute")
         val f = Flow(this).apply { setPadding(dp(24), dp(4), dp(24), dp(10)) }
@@ -491,33 +541,34 @@ class SettingsActivity : BaseActivity() {
         add(FrameLayout(this).apply { setPadding(dp(24), dp(6), dp(24), dp(6)); addView(fld) })
         add(FrameLayout(this).apply {
             setPadding(dp(24), dp(6), dp(24), dp(6))
-            addView(button("Save my own", Kind.QUIET) { if (fld.text.isNotBlank()) { Store.urgePlan = fld.text.toString(); render() } })
+            addView(button("Save my own", Kind.QUIET) { if (fld.text.isNotBlank()) { Store.urgePlan = fld.text.toString(); hideKeyboard(this@SettingsActivity, fld); render() } })
         })
-        identityPicker()
-    }
 
-    /** "I'm someone who…": shown every time Intent stops you. Who you're becoming, in your words. */
-    private fun identityPicker() {
-        add(sectionTitle("Who you're becoming"))
-        add(paragraph("Every time Intent stops you, it reminds you in your own words. Habits stick when they're part of who you are, not just what you're trying to do.", 14.5f, P.text3))
-        val ideas = listOf("finishes what I start", "keeps promises to myself", "builds things", "is fully present with people",
-            "takes care of my body", "learns something every day")
-        val f = Flow(this).apply { setPadding(dp(24), dp(4), dp(24), dp(10)) }
-        for (i in ideas) {
-            val c = Chip(this, i); c.on = Store.identity == i
-            c.setOnClickListener { it.tick(); Store.identity = if (Store.identity == i) "" else i; render() }
-            f.addView(c)
-        }
-        add(f)
-        val fld = field("I'm someone who…", if (Store.identity in ideas) "" else Store.identity, caps = false)
-        add(FrameLayout(this).apply { setPadding(dp(24), dp(6), dp(24), dp(6)); addView(fld) })
-        add(FrameLayout(this).apply {
-            setPadding(dp(24), dp(6), dp(24), dp(6))
-            addView(button("Save", Kind.QUIET) {
-                Store.identity = fld.text.toString().trim().removePrefix("I'm someone who").removePrefix("i'm someone who").trim()
-                hideKeyboard(this@SettingsActivity, fld); render()
-            })
+        // The daily plan: optional, and only on this phone.
+        add(sectionTitle("Your day"))
+        add(paragraph("“What matters today?” on the home screen: one thing, the first small step and when, and if you like what might get in the way. Pairing a wish with its obstacle and a plan helps more than the wish alone.", 14.5f))
+        add(toggleRow("Ask what matters today", "Until you answer, or say “Not today”", Store.planPrompt) { Store.planPrompt = it })
+        add(row("My day starts at", "Today's plan lasts until then. Working nights? Set it to when you wake.", timeLabel(Store.dayStartMin)) {
+            pickTime(Store.dayStartMin) { v -> Store.dayStartMin = v; render() }
         })
+        add(toggleRow("Evening look-back", "Late in your day: did it happen, what helped, what pulled you away, tomorrow's first step", Store.eveningOn) { Store.eveningOn = it })
+        val notes = Store.reflections
+        if (notes.isNotEmpty()) {
+            add(sectionTitle("Your look-backs"))
+            add(paragraph("${notes.size} saved, only on this phone. Nobody else sees them.", 14.5f))
+            for (r in notes.takeLast(3).asReversed()) add(row(r.thing.ifBlank { "A day" }, listOf(r.day, when (r.outcome) { "yes" -> "it happened"; "partly" -> "partly"; "no" -> "not today"; else -> "" },
+                r.next.takeIf { it.isNotBlank() }?.let { "next: $it" } ?: "").filter { it.isNotBlank() }.joinToString(" · "), null, null))
+            add(row("Export as text", "Share them to your notes, email or files", null) {
+                val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, com.poshith.intent.ui.reflectionsText())
+                Launch.tryStart(this, Intent.createChooser(send, "Export look-backs"), "Nothing to share with")
+            })
+            add(row("Delete them all", null, null) {
+                val sh = com.poshith.intent.ui.Sheet(this, "Delete all look-backs?", "They're deleted from this phone for good.")
+                sh.add(button("Delete", Kind.PRIMARY) { Store.deleteReflections(); sh.dismiss(); render() })
+                sh.add(button("Keep them", Kind.PLAIN) { sh.dismiss() })
+                sh.show()
+            })
+        }
     }
 
     // ---------------------------------------------------------------------------------- strict mode
@@ -525,7 +576,7 @@ class SettingsActivity : BaseActivity() {
     private fun strictSummary(): String = when {
         !Store.strictActive() -> "Off · no extensions, looser only from tomorrow"
         Store.strictOffDay.isNotEmpty() -> "On until midnight"
-        Store.locked() -> "On · Shorts and Reels locked until ${timeLabelAt(Store.lockUntil)}"
+        Store.locked() && feedsClosedUntil() != null -> "On · Shorts and Reels closed until ${feedsClosedUntil()}"
         else -> "On · ${Store.reelsAllow} Shorts and Reels a day"
     }
 
@@ -537,32 +588,21 @@ class SettingsActivity : BaseActivity() {
 
         // The two dials first: stricter applies now, looser from tomorrow.
         add(sectionTitle("Shorts and Reels a day"))
-        val nextReels = Store.tomorrowValue("reels_allow")
-        add(chips(com.poshith.intent.core.Strict.SHORTS_CHOICES, Store.reelsAllow, { if (it == 0) "None" else "$it" }) { v ->
-            if (!on || v <= Store.reelsAllow) { Store.reelsAllow = v; Store.clearTomorrow("reels_allow") }
-            else Store.setTomorrow("reels_allow", v)
-            render()
-        })
-        if (on && nextReels != null) add(paragraph("From tomorrow: ${if (nextReels == 0) "none" else "$nextReels"}.", 14f, P.accent))
-        add(sectionTitle("Minutes a day for all pull apps"))
-        val nextBudget = Store.tomorrowValue("budget_min")
-        add(chips(com.poshith.intent.core.Limits.BUDGET_CHOICES, Store.budgetMin, { if (it == 0) "No limit" else "$it min" }) { v ->
-            val cur = Store.budgetMin
-            val stricter = v != 0 && (cur == 0 || v < cur)
-            if (!on || stricter || v == cur) { Store.budgetMin = v; Store.clearTomorrow("budget_min") }
-            else Store.setTomorrow("budget_min", v)
-            render()
-        })
-        if (on && nextBudget != null) add(paragraph("From tomorrow: ${if (nextBudget == 0) "no limit" else "$nextBudget min"}.", 14f, P.accent))
+        add(chips(com.poshith.intent.core.Strict.SHORTS_CHOICES, Store.reelsAllow, { if (it == 0) "None" else "$it" }) { v -> pickReelsAllow(v) })
+        pendingNote("reels_allow") { if (it == 0) "none" else "$it a day" }
+        add(sectionTitle("Minutes a day for all apps you want to use less"))
+        add(chips(com.poshith.intent.core.Limits.BUDGET_CHOICES, Store.budgetMin, { if (it == 0) "No limit" else "$it min" }) { v -> pickBudget(v) })
+        pendingNote("budget_min") { if (it == 0) "no daily budget" else "$it min" }
 
         // Then: turn it on, or how today is going.
         if (on) {
             add(sectionTitle("Today"))
             val n = Store.stopsToday()
             add(paragraph(when {
-                Store.locked() -> "Stopped $n time${if (n == 1) "" else "s"} today. Shorts and Reels are locked until ${timeLabelAt(Store.lockUntil)}; the rest of YouTube and Instagram works."
-                n > 0 -> "Stopped $n time${if (n == 1) "" else "s"} today. ${com.poshith.intent.core.Strict.nextLockWords(n)}"
-                else -> "No stops yet today."
+                Store.locked() && feedsClosedUntil() != null -> "Shorts and Reels are closed until ${feedsClosedUntil()}. The rest of YouTube and Instagram works."
+                n > 0 -> "Today's Shorts and Reels are used. ${com.poshith.intent.core.Strict.nextLockWords(n)}"
+                Store.reelsAllowToday() == 0 -> "Shorts and Reels are off today. The rest of YouTube and Instagram works."
+                else -> "About ${Stats.shortVideosToday()} of ${Store.reelsAllowToday()} Shorts and Reels so far today."
             }, 15f, P.text2))
             if (Store.strictOffDay.isEmpty()) {
                 add(row("Turn off Strict mode", "It stays on until midnight, so tomorrow's you decides.", null) {
@@ -571,7 +611,7 @@ class SettingsActivity : BaseActivity() {
             } else {
                 add(row("Keep Strict mode on", "It's set to switch off at midnight.", null) { Store.strictOffDay = ""; render() })
             }
-            if (Store.locked() && Store.strictCodeHash.isNotEmpty()) add(row("End today's lock", "With your emergency code: ${com.poshith.intent.core.Strict.EMERGENCY_MORE} more Shorts and Reels today", null) {
+            if (Store.locked() && Store.strictCodeHash.isNotEmpty()) add(row("${com.poshith.intent.core.Strict.EMERGENCY_MORE} more today", "With your emergency code", null) {
                 askEmergencyCode("It ends the lock and gives you ${com.poshith.intent.core.Strict.EMERGENCY_MORE} more today.") {
                     Store.lockUntil = 0; Store.addReelsBonus(com.poshith.intent.core.Strict.EMERGENCY_MORE); render()
                 }
@@ -589,12 +629,13 @@ class SettingsActivity : BaseActivity() {
 
         fun point(s: String) = add(text("•  $s", 15f, P.text2).apply { setLineSpacing(0f, 1.25f); setPadding(dp(24), dp(5), dp(24), dp(5)) })
         add(sectionTitle("How it works"))
-        point("Shorts and Reels: a number a day (both together), no extensions. At the first swipe it says how many are left; at the last one it warns you; past it, they close.")
-        point("Go back to them after being stopped and they lock: 30 minutes, then 2 hours, then the rest of the day. Only Shorts and Reels: messages, search and long videos keep working.")
+        point("Shorts and Reels: a number a day (both together), no extensions. At the first swipe it says how many are left; past the last one they close until tomorrow. Only Shorts and Reels: messages, search and long videos keep working. (The count is estimated from scrolling.)")
+        point("Go back to them after that and they bounce you out of the feed, for longer each time.")
         point("Nothing to wait out: the daily limit, budget, rest and quiet hours have no unlock buttons.")
+        point("Morning quiet and wind-down end a session that's running, instead of letting it finish.")
         point("Rules only get looser from tomorrow. Stricter applies now.")
         point("One way past it: an emergency code, shown once. Keep it where it's hard to reach.")
-        identityPicker()
+        point("Calls, messages, maps, payments, Wi-Fi, Bluetooth and hotspot always work.")
     }
 
 
@@ -618,12 +659,12 @@ class SettingsActivity : BaseActivity() {
             if (h == Launch.Health.STOPPED) (r.findViewWithTag<android.widget.TextView>("value"))?.setTextColor(P.warn)
             add(r)
         }
-        healthRow("Focus Guard", Launch.guardHealth(this), "Pauses mindful apps from anywhere and ends sessions on time",
+        healthRow("Focus Guard", Launch.guardHealth(this), "Pauses the apps you want to use less from anywhere, and ends sessions on time",
             "Off: pauses only apps opened from Intent; sessions end with a notification") { guardSheet(this) }
-        healthRow("Shorts & Reels guard", Launch.reelsHealth(this), "Steps in when you start swiping through Shorts or Reels",
-            "Off: Shorts and Reels play without a pause") { reelsSheet(this) }
-        healthRow("Real break: no notifications", Launch.quietHealth(this), "Only calls get through a real break; the rest wait for you",
-            "Off: notifications still come in during a real break") {
+        healthRow("Shorts & Reels guard (experimental)", Launch.reelsHealth(this), "Steps in when you start swiping through Shorts or Reels; counts are estimates",
+            "Off: Shorts and Reels play without a pause (whole-app sessions still work)") { reelsSheet(this) }
+        healthRow("Notification access", Launch.quietHealth(this), "Real breaks hold notifications (calls still ring), and a closed app's video is paused, never your music",
+            "Off: notifications come in during a real break, and a video in a small window may keep playing after Intent closes its app") {
             if (!BreakQuietService.hasAccess(this)) BreakQuietService.requestAccess(this)
             else if (!Dnd.hasAccess(this)) Dnd.requestAccess(this)
             else BreakQuietService.requestAccess(this) // stopped: switching it off and on reconnects it
@@ -648,11 +689,11 @@ class SettingsActivity : BaseActivity() {
         !ReelsGuardService.isOn(this) -> "Off · needs one switch in Android settings"
         !Store.reelsOn -> "Paused"
         else -> (if (Store.reelsAllow == 0) "The swipe always stops you" else "Asks at the first swipe, then every ${Store.reelsAllow}") +
-            " · ${Stats.shortVideosToday()} today"
+            " · about ${Stats.shortVideosToday()} today"
     }
 
     private fun pageReels() {
-        header("Shorts and Reels", "The one you open is fine. The endless swipe is the trap. When you start swiping through YouTube Shorts or Instagram Reels, Intent steps in: today's count, a line worth reading, and a big button to close the app.")
+        header("Shorts and Reels", "Experimental. The one you open is fine; the endless swipe is the trap. When you start swiping through YouTube Shorts or Instagram Reels, Intent steps in with a question and a big button to close the app. It tells swipes apart by the names of the views that scroll, so counts are estimates and an app update can confuse it. Timed sessions for the whole app (Apps I want to use less) are the dependable part.")
         val on = ReelsGuardService.isOn(this)
         if (!on) {
             val card = vbox().apply {
@@ -675,19 +716,17 @@ class SettingsActivity : BaseActivity() {
         fun label(v: Int) = if (v == 0) "None" else "$v"
         if (Store.strictActive()) {
             add(row("Strict mode is on", "Today's number (${Store.reelsAllow}) and when it changes are on the Strict mode page.", null) { go("strict") })
-        } else add(chips(intArrayOf(0, 5, 10, 20), Store.reelsAllow, { label(it) }) { v ->
-            if (v > Store.reelsAllow) loosen("Allow more?", "From ${label(Store.reelsAllow)} to $v before it asks again.") { Store.reelsAllow = v; render() }
-            else { Store.reelsAllow = v; render() }
-        })
+        } else add(chips(intArrayOf(0, 5, 10, 20), Store.reelsAllow, { label(it) }) { v -> pickReelsAllow(v) })
+        add(toggleRow("Blunt lines", "A short, blunt line on the pause (“Close it. You already know.”). Off by default: shame tends to backfire.", Store.bluntLines) { Store.bluntLines = it })
         add(sectionTitle("Today"))
-        add(paragraph("${Stats.shortVideosToday(Feed.SHORTS)} Shorts · ${Stats.shortVideosToday(Feed.REELS)} Reels", 16f, P.text))
+        add(paragraph("About ${Stats.shortVideosToday(Feed.SHORTS)} Shorts · about ${Stats.shortVideosToday(Feed.REELS)} Reels (estimated)", 16f, P.text))
         add(sectionTitle("What it can and can't see"))
-        add(paragraph("Android tells it only when something scrolls inside YouTube or Instagram. It looks at the names of the view that scrolled and the views around it (like “reel_recycler”), to tell a swipe through Shorts from scrolling comments or the home feed. It never reads text, can't see other apps, and Intent has no internet permission.", 14.5f))
+        add(paragraph("Android tells it only about scrolling and screen changes inside YouTube and Instagram. Android lets this kind of service look at those two apps' screens; Intent uses that only to read the names of views (like “reel_recycler”) and their size, to tell the Shorts or Reels player from comments or the home feed. It never reads text, can't see other apps, and Intent has no internet permission. Focus Guard is different: it can't look at any screen at all, only which app is in front.", 14.5f))
         if (on) add(row("Turn it off in Android settings", null, null) { reelsSheet(this) })
     }
 
     private fun usageSheet() {
-        val s = Sheet(this, "Usage access", "Lets Intent read Android's own usage events to show today's unlocks and minutes in mindful apps. Computed on your phone, never stored elsewhere or sent anywhere.")
+        val s = Sheet(this, "Usage access", "Lets Intent read Android's own usage events to show today's unlocks and minutes in the apps you want to use less. Computed on your phone, never stored elsewhere or sent anywhere.")
         s.add(button("Open usage access", Kind.PRIMARY) { s.dismiss(); Launch.usageSettings(this) })
         s.show()
     }
@@ -703,7 +742,7 @@ class SettingsActivity : BaseActivity() {
         val flagged = (Store.packagesWithMode(Mode.MINDFUL) + Store.packagesWithMode(Mode.BATCHED) + Store.packagesWithMode(Mode.BLOCKED) + suggestedPull())
             .filter { Apps.isInstalled(it) }.distinct()
         add(sectionTitle("Suggested to silence"))
-        if (flagged.isEmpty()) add(paragraph("Nothing flagged. Mark apps as mindful first.", 15f, P.text3))
+        if (flagged.isEmpty()) add(paragraph("Nothing here yet. Choose the apps you want to use less first.", 15f, P.text3))
         for (p in flagged.sortedBy { Apps.labelFor(this, it).lowercase() }) notifRow(p, p in reviewed)
         add(sectionTitle("Usually worth keeping"))
         add(paragraph("Calls, messages from people, one-time passwords, payments, calendar, navigation.", 14.5f))
@@ -735,7 +774,7 @@ class SettingsActivity : BaseActivity() {
 
     private fun pageGestures() {
         header("Gestures")
-        add(toggleRow("Swipe right: Mind library", null, Store.swipeRightMind) { Store.swipeRightMind = it })
+        add(toggleRow("Swipe right: Practice", "A one-minute reset, and short lessons from research", Store.swipeRightMind) { Store.swipeRightMind = it })
         val left = Store.swipeLeftKey.takeIf { it.isNotBlank() }?.let { Apps.byKey(it)?.label }
         add(row("Swipe left", "Opens an app (through its rules). Without one, it opens search.", left ?: "Search") {
             lateinit var ov: Overlay
@@ -770,8 +809,10 @@ class SettingsActivity : BaseActivity() {
             add(dim)
         }
         add(toggleRow("Status bar on the home screen", "Off for a calmer screen. Swipe down still opens notifications.", Store.statusBar) { Store.statusBar = it })
-        add(toggleRow("Quotes on the home screen", "A line worth stopping for. Tap it for another.", Store.showQuote) { Store.showQuote = it; render() })
-        if (Store.showQuote) add(toggleRow("One quote a day", "Off: a new one every 30 seconds. On: one line for the whole day, calmer to come back to.", Store.quoteDaily) { Store.quoteDaily = it })
+        add(toggleRow("A quote a day", "One line on the home screen, new each morning. Tap it to see where it's from, or to pin it for a week.", Store.showQuote) { Store.showQuote = it; render() })
+        if (Store.showQuote && Store.quotePinnedUntil > System.currentTimeMillis()) add(row("Unpin today's quote", "Pinned until ${DateFormat.getDateFormat(this).format(java.util.Date(Store.quotePinnedUntil))}", null) {
+            Store.quotePinned = -1; Store.quotePinnedUntil = 0L; render()
+        })
         add(sectionTitle("Theme"))
         val themes = listOf("system" to "Follow system", "dark" to "Dark", "light" to "Light")
         val tf = Flow(this).apply { setPadding(dp(24), dp(4), dp(24), dp(10)) }
@@ -844,7 +885,7 @@ class SettingsActivity : BaseActivity() {
             "• Rules set while calm work better than willpower in the moment (Allcott et al., 2022), so loosening a rule waits.\n" +
             "• Essentials stay instant, because rules that are too strict get abandoned (Castelo et al., 2025).\n\n" +
             "No app can promise a better brain. What Intent can do is make the thing you intended easy, and the thing you didn't intend a little slower.", 15.5f, P.text))
-        add(row("The Mind library", "${com.poshith.intent.core.Lessons.all.size} sourced lessons: swipe right on the home screen", null, null))
+        add(row("Practice", "A one-minute reset and ${com.poshith.intent.core.Lessons.all.size} short lessons, each with its source: swipe right on the home screen", null, null))
         add(row("Code and research notes", GITHUB.removePrefix("https://"), null) {
             Launch.tryStart(this, Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB)), "No browser found")
         })
@@ -897,7 +938,7 @@ fun reelsSheet(a: BaseActivity) {
 }
 
 fun guardSheet(a: BaseActivity) {
-    val s = Sheet(a, "Focus Guard", "Lets Intent show your pause even when a mindful app is opened from a notification or the recents screen, and end the sessions you choose on time.")
+    val s = Sheet(a, "Focus Guard", "Lets Intent show your pause even when an app you want to use less is opened from a notification or the recents screen, and end the sessions you choose on time.")
     if (Launch.guardHealth(a) == Launch.Health.STOPPED) stoppedNote(a, s, "Focus Guard")
     s.add(a.text("What it uses: Android's accessibility service, only to learn which app is in front (its package name).\n\nWhat it can't do: read your screen, messages or passwords, see notifications, or go online. Intent has no internet permission.", 15f, P.text2).apply { setLineSpacing(0f, 1.25f) }, 24)
     s.add(a.button("Open accessibility settings", Kind.PRIMARY) { s.dismiss(); Launch.accessibilitySettings(a) })
