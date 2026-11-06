@@ -1,0 +1,1 @@
+    mResumedActivity: ActivityRecord{d0e491b u0 com.google.android.youtube/com.google.android.apps.youtube.app.WatchWhileActivity t14}

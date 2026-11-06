@@ -1,0 +1,1 @@
+    mResumedActivity: ActivityRecord{4f7be55 u0 com.poshith.intent/.GateActivity t15}
