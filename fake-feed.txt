@@ -1,0 +1,4 @@
+signed -> out/fake-feed.apk
+-rw-r--r-- 1 runner runner 12711 Nov  6 23:24 out/fake-feed.apk
+Performing Streamed Install
+Success

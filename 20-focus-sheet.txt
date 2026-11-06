@@ -1,0 +1,15 @@
+(dump failed: ERROR: null root node returned by UiTestAutomationBridge.)
+11:26
+Friday, 6 November
+“Picture the steps, not the trophy.”
+What matters today?
+Focus Guard is off
+Messages
+Maps
+Phone
+Focus
+Camera
+Switched off
+The rules you chose depend on these. One switch each in Android's settings.
+Focus Guard
+Remind me next week

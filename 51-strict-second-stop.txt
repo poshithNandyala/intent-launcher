@@ -1,0 +1,1 @@
+    mResumedActivity: ActivityRecord{c1f9819 u0 com.poshith.intent/.ReelsActivity t20}
