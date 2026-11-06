@@ -2,6 +2,9 @@
 # Emulator smoke test: installs the APK, walks through setup and the main screens, and records
 # a screenshot, the visible text and any crash at every step (in smoke/).
 set -u
+# No adb call may hang the run: a lost emulator connection makes adb wait forever ("waiting for
+# device"), and the job then dies at its time limit with nothing to show. Every call gets a limit.
+adb() { timeout 120 command adb "$@"; }
 PKG=com.poshith.intent
 OUT=smoke
 mkdir -p "$OUT"
@@ -27,9 +30,13 @@ record() { # name
     local name
     name=$(printf "%02d-%s" "$n" "$1")
     sleep 2
-    answer_anr "$1"
-    adb exec-out screencap -p > "$OUT/$name.png" 2>/dev/null
     python3 scripts/ui.py texts > "$OUT/$name.txt" 2>&1
+    # Another app's "isn't responding" dialog in the way: answer it (and keep the evidence), then look again.
+    if grep -qE "isn't responding|keeps stopping" "$OUT/$name.txt"; then
+        answer_anr "$1"
+        python3 scripts/ui.py texts > "$OUT/$name.txt" 2>&1
+    fi
+    adb exec-out screencap -p > "$OUT/$name.png" 2>/dev/null
     intent_crashes
     echo "== $name (pid: $(adb shell pidof $PKG || echo none))"
 }
