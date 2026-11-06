@@ -1,0 +1,1 @@
+    topResumedActivity=ActivityRecord{6ed5f74 u0 com.poshith.intent/.GateActivity t15}

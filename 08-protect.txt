@@ -1,0 +1,18 @@
+Turn on what you need
+Each is one switch in Android's settings, and comes back here.
+Make Intent your home screen
+✓ On
+So your phone opens to your essentials, not to an icon grid built to pull you in.
+Focus Guard
+Recommended
+Pauses the apps you want to use less even when you open them from a notification or recents, and closes them when your minutes are up. It sees only which app is in front, never what's on the screen.
+Turn on
+Shorts & Reels guard
+Optional
+Experimental. Notices the swipe through YouTube Shorts or Instagram Reels from the names of the views that scroll, never text. Counts are estimates. Without it, whole-app sessions still work.
+Turn on
+Reminders
+✓ On
+Without Focus Guard, Intent can't close an app when your minutes are up, so it sends a quiet note instead.
+Turn on Focus Guard
+Skip for now
