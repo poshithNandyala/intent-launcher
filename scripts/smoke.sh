@@ -4,7 +4,8 @@
 set -u
 # No adb call may hang the run: a lost emulator connection makes adb wait forever ("waiting for
 # device"), and the job then dies at its time limit with nothing to show. Every call gets a limit.
-adb() { timeout 120 command adb "$@"; }
+ADB_BIN=$(command -v adb)
+adb() { timeout 120 "$ADB_BIN" "$@"; }
 PKG=com.poshith.intent
 OUT=smoke
 mkdir -p "$OUT"
