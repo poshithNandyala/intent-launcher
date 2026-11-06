@@ -3,7 +3,7 @@
 An Android home screen that keeps your tools one tap away and puts a short, kind pause in front of the apps you want to use less.</p>
 
 <p align="center">
-  <a href="https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.5.1.apk"><b>⬇ Download the APK</b></a> ·
+  <a href="https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.6.0.apk"><b>⬇ Download the APK</b></a> ·
   <a href="docs/RESEARCH.md">The research</a> ·
   <a href="PRIVACY.md">Privacy</a>
 </p>
@@ -45,8 +45,8 @@ Intent is built around that moment of reaching. It doesn't fight you or shame yo
 
 ## Install
 
-1. Download **[Intent-1.5.1.apk](https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.5.1.apk)** on your phone and open it. Allow "install unknown apps" for your browser if Android asks.
-   SHA-256 `cfb1974539cd135eaac2f3ca0f989938b1410bfeadc8cf95e8c5bdf3a9f3ef6d`
+1. Download **[Intent-1.6.0.apk](https://github.com/poshithNandyala/intent-launcher/raw/main/download/Intent-1.6.0.apk)** on your phone and open it. Allow "install unknown apps" for your browser if Android asks.
+   SHA-256 `367fa883024d22a9588779e4e10afaddb9820e61f5213e3936fb39638ee59efd`
    Updating? It installs over 1.4.x, 1.5.x, 1.2.0 and older. The 1.3.0 build from 1 November was signed with a different key: uninstall that one first.
 2. Open Intent and follow the two-minute setup: choose your essentials, the apps you want to use less (only Instagram comes ticked), your if-then plan, Gentle or Strict, and then the one or two switches your choices need. If Android restarts setup when you pick Intent as your home app, it picks up where you were.
 3. **Make Intent your home app** when asked, or later in *Settings › Apps › Default apps › Home app*.
