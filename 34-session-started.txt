@@ -1,0 +1,1 @@
+    topResumedActivity=ActivityRecord{d6f2292 u0 com.google.android.youtube/com.google.android.apps.youtube.app.watchwhile.InternalMainActivity t15}
