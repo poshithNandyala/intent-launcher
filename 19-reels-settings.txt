@@ -1,0 +1,6 @@
+‹  Back
+Shorts and Reels
+Experimental. The one you open is fine; the endless swipe is the trap. When you start swiping through YouTube Shorts or Instagram Reels, Intent steps in with a question and a big button to close the app. It tells swipes apart by the names of the views that scroll, so counts are estimates and an app update can confuse it. Timed sessions for the whole app (Apps I want to use less) are the dependable part.
+One switch in Android settings
+Turn on “Intent · Shorts & Reels” in Accessibility. It's separate from Focus Guard, so you can have either or both.
+Turn it on

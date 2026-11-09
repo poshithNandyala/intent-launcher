@@ -1,0 +1,11 @@
+Turn on what you need
+Each is one switch in Android's settings, and comes back here.
+Make Intent your home screen
+Needed
+So your phone opens to your essentials, not to an icon grid built to pull you in.
+Turn on
+Focus Guard
+Recommended
+Pauses the apps you want to use less even when you open them from a notification or recents, and closes them when your minutes are up. It sees only which app is in front, never what's on the screen.
+Set Intent as home
+Skip for now

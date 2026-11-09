@@ -1,0 +1,6 @@
+Intent hit a problem
+Sorry. Intent closed instead of opening properly. Nothing on your phone was changed.  Copy the details below and send them to the developer so it can be fixed. If Intent is your home app and keeps closing, switch back to your previous home app until it's fixed.
+Intent 1.7.0 · Android 9 (API 28) · Google Android SDK built for x86_64 · thread main  android.app.RemoteServiceException: shell-induced crash 	at android.app.ActivityThread$H.handleMessage(ActivityThread.java:1737) 	at android.os.Handler.dispatchMessage(Handler.java:106) 	at android.os.Looper.loop(Looper.java:193) 	at android.app.ActivityThread.main(ActivityThread.java:6669) 	at java.lang.reflect.Method.invoke(Native Method) 	at com.android.internal.os.RuntimeInit$MethodAndArgsCaller.run(RuntimeInit.java:493) 	at com.android.internal.os.ZygoteInit.main(ZygoteInit.java:858) 
+Copy details
+Restart Intent
+Switch home app
