@@ -883,7 +883,7 @@ class HomeActivity : BaseActivity() {
     /**
      * Back home after a session: "After YouTube, how do you feel?" Better, about the same, or worse. Once
      * per session, only after a minute or more in the app, at most three times a day, and never in the
-     * way: no answer is fine, and it goes after a few seconds. Paying attention to what a habit actually
+     * way: no answer is fine, and it goes by itself after a little while. Paying attention to what a habit actually
      * gives you is how its pull gets re-learned (Ludwig, Brown & Brewer, 2020); the answers stay on the phone.
      */
     private fun maybeAfterCheck() {
