@@ -94,6 +94,13 @@ W=${size%x*}; H=${size#*x}
 swipe() { # x1 y1 x2 y2 in percent of the screen
     adb shell input swipe $(($1 * W / 100)) $(($2 * H / 100)) $(($3 * W / 100)) $(($4 * H / 100)) 180
 }
+scroll_to() { # label: scroll a list up, slowly, until the label is on screen (at most 6 times)
+    for _ in 1 2 3 4 5 6; do
+        python3 scripts/ui.py has "$1" > /dev/null 2>&1 && return 0
+        adb shell input swipe $((W / 2)) $((H * 75 / 100)) $((W / 2)) $((H * 40 / 100)) 450; sleep 1
+    done
+    python3 scripts/ui.py has "$1" > /dev/null 2>&1
+}
 
 adb shell getprop ro.build.version.release > "$OUT/android.txt"
 # Older emulators report "booted" well before they finish starting up; let them settle.
@@ -160,10 +167,10 @@ adb shell input swipe "$((W / 2))" "$((H / 2))" "$((W / 2))" "$((H / 2))" 900
 record long-press
 tap "Settings";           record settings
 swipe 50 75 50 45;        record settings-scrolled
+scroll_to "Shorts and Reels"
 tap "Shorts and Reels";   record reels-settings
-adb shell input keyevent KEYCODE_BACK
-# Settings › Mindfulness (further down the list on small screens)
-for _ in 1 2 3 4; do python3 scripts/ui.py has "Mindfulness" > /dev/null 2>&1 && break; swipe 50 75 50 45; done
+adb shell input keyevent KEYCODE_BACK       # back to the top of Settings
+scroll_to "Mindfulness"
 tap "Mindfulness";        record mindfulness-settings
 expect_text "Ask what's pulling me" mindfulness-settings
 adb shell input keyevent KEYCODE_BACK
@@ -236,9 +243,14 @@ if adb shell pm list packages | grep -q "package:com.google.android.youtube"; th
     [ "$ox" -gt 0 ] && adb shell input tap "$ox" "$oy"
     wait_top youtube 20
     snap session-started
-    sleep 135
+    sleep 110
+    for _ in $(seq 1 40); do top | grep -q HomeActivity && break; sleep 1; done
+    sleep 1
     snap session-2-min-later    # expected: YouTube closed, Intent's home in front (no time's-up screen)
     expect_top HomeActivity session-2-min-later
+    # Back home after a session: how did it feel? (once, after a minute or more in the app)
+    record session-after-check
+    expect_text "how do you feel?" session-after-check
     adb shell input keyevent KEYCODE_HOME
 fi
 

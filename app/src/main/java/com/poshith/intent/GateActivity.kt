@@ -307,10 +307,10 @@ class GateActivity : BaseActivity() {
             refreshOpen()
             // Show what comes next. If you're reading the answer to what's pulling you, it stays where it is,
             // unless opening needs "What's it for?": then just enough of that comes into view at the bottom.
-            after.post {
-                val sc = scroll ?: return@post
+            afterLayout(after) {
+                val sc = scroll ?: return@afterLayout
                 if (pull == null) sc.smoothScrollTo(0, after.top - dp(24))
-                else if (askWhy) (after.top + dp(140) - sc.height).let { want -> if (want > sc.scrollY) sc.smoothScrollTo(0, want) }
+                else if (askWhy) showDownTo(after.top + dp(140))
             }
         }
     }
@@ -369,12 +369,28 @@ class GateActivity : BaseActivity() {
             gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(4)
         })
         updatePlanLine()
-        // Keep the answer in view: scroll just enough to show it, and nothing jumps away from it later.
-        actions.post {
-            val sc = scroll ?: return@post
-            val bottom = actions.bottom + dp(12)
-            if (bottom > sc.scrollY + sc.height) sc.smoothScrollTo(0, bottom - sc.height)
-        }
+        // Keep the answer in view: scroll just enough to show it (clear of the soft fade at the bottom
+        // edge), once it's laid out, and nothing jumps away from it later.
+        afterLayout(actions) { showDownTo(actions.bottom + dp(36)) }
+    }
+
+    /** Runs [fn] once [v] has been laid out again (its new size and place are known by then). */
+    private fun afterLayout(v: View, fn: () -> Unit) {
+        v.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() {
+                if (v.viewTreeObserver.isAlive) v.viewTreeObserver.removeOnGlobalLayoutListener(this)
+                fn()
+            }
+        })
+        v.requestLayout()
+    }
+
+    /** Scrolls down only as far as needed for the content down to [y] to be in view (never up). */
+    private fun showDownTo(y: Int) {
+        val sc = scroll ?: return
+        val visible = sc.height - sc.paddingTop - sc.paddingBottom
+        val want = y - visible
+        if (want > sc.scrollY) sc.smoothScrollTo(0, want)
     }
 
     /** RAIN, from the pause: "Let it pass" leaves; "Open anyway" (or closing it) comes back here. */

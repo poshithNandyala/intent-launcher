@@ -913,7 +913,7 @@ class HomeActivity : BaseActivity() {
         flow.addView(chip("About the same", 0))
         flow.addView(chip("Worse", -1))
         checkIn.addView(flow, lp())
-        ui.postDelayed({ if (afterToken === token) { afterToken = null; hideCheckIn() } }, 15_000)
+        ui.postDelayed({ if (afterToken === token) { afterToken = null; hideCheckIn() } }, 20_000)
         showCheckIn()
     }
 
