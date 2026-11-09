@@ -417,8 +417,12 @@ object Store {
     /** Hold check-in apps' notifications until the next check-in time (needs Notification access). */
     var batchNotifications: Boolean get() = bool("batch_notif", false); set(v) = putB("batch_notif", v)
 
-    /** Ask "How are you feeling?" on the pause screen. */
-    var askFeeling: Boolean get() = bool("ask_feeling", false); set(v) = putB("ask_feeling", v)
+    // ------------------------------------------------------------------ mindfulness (see core/Pulls, data/Noticed)
+    /** "What's pulling you?" on the pause screen, while you breathe. On unless you turn it off. */
+    var askPull: Boolean get() = bool("ask_pull", true); set(v) = putB("ask_pull", v)
+    /** Back home after a session: "How do you feel?" And on the pause, a reminder when an app keeps
+     *  leaving you worse. On unless you turn it off. */
+    var askAfter: Boolean get() = bool("ask_after", true); set(v) = putB("ask_after", v)
 
     // ------------------------------------------------------------------ sessions (see core/Sessions.kt)
     private val book = SessionBook()

@@ -345,6 +345,84 @@ fun main() {
         Strict.nextLockWords(3).contains("rest of the day"))
     check("blunt lines are short and distinct", Quotes.blunt.all { it.length in 8..90 } && Quotes.blunt.toSet().size == Quotes.blunt.size)
 
+    // --- what's pulling you: the pull check, urge rides, how sessions felt
+    check("pull ids are unique and stable", Pull.values().map { it.id }.toSet().size == Pull.values().size &&
+        Pull.byId("bored") == Pull.BORED && Pull.byId("nope") == null && Pull.byId(null) == null)
+    check("every pull has a short reply, plan words and ideas", Pull.pulls.all {
+        it.reply.length in 30..140 && it.ideas.size >= 3 && it.whenWords.startsWith("When ") && it.youWords.startsWith("when you")
+    })
+    check("'something specific' is a reason, not a pull", !Pull.PURPOSE.isPull && Pull.PURPOSE !in Pull.pulls && Pull.PURPOSE.reply.isNotBlank())
+    check("chip labels are short", Pull.values().all { it.label.length <= 22 })
+    val pday = Pulls.DAY_MS
+    val now0 = 100 * pday
+    val notes = listOf(
+        PullNote(now0 - 1_000, Pull.BORED, "a", false),
+        PullNote(now0 - 2_000, Pull.BORED, "a", true),
+        PullNote(now0 - 3_000, Pull.STRESSED, "b", false),
+        PullNote(now0 - 4_000, Pull.PURPOSE, "a", true),
+        PullNote(now0 - 40 * pday, Pull.LONELY, "a", false),
+    )
+    check("named pulls survive storage", Pulls.decodeNotes(Pulls.encodeNotes(notes)).let { d ->
+        d.size == 5 && d[0].pull == Pull.BORED && d[0].pkg == "a" && !d[0].opened && d[1].opened && d[3].pull == Pull.PURPOSE
+    })
+    check("a broken line is skipped, not fatal", Pulls.decodeNotes("x|bored|a|1\n5|nope|a|1\n7|bored|a\n9|habit|b|0").let { it.size == 1 && it[0].pull == Pull.HABIT } &&
+        Pulls.decodeNotes(null).isEmpty() && Pulls.decodeNotes("").isEmpty())
+    val since30 = now0 - Pulls.WINDOW_MS
+    val topPulls = Pulls.top(notes, since30)
+    check("most common pull first; 'specific' and old ones left out", topPulls.size == 2 && topPulls[0].pull == Pull.BORED && topPulls[0].n == 2 && topPulls[1].pull == Pull.STRESSED)
+    check("ties keep the usual order", Pulls.top(listOf(PullNote(1, Pull.TIRED, "a", false), PullNote(2, Pull.BORED, "a", false)), 0).map { it.pull } == listOf(Pull.BORED, Pull.TIRED))
+    check("headline names the top two", Pulls.headline(topPulls) == "Most often: bored, then stressed" && Pulls.headline(emptyList()) == null &&
+        Pulls.headline(topPulls.take(1)) == "Most often: bored")
+    check("let it pass counts real pulls only", Pulls.letPass(notes, since30).let { it.passed == 2 && it.total == 3 })
+    val hourOf = { t: Long -> ((t / 3_600_000L) % 24).toInt() }
+    fun atHour(hr: Int) = 10 * pday + hr * 3_600_000L
+    val evening = List(5) { PullNote(atHour(21) + it, Pull.BORED, "a", false) } + listOf(PullNote(atHour(22), Pull.TIRED, "a", false), PullNote(atHour(9), Pull.HABIT, "a", false))
+    check("the busiest two hours", Pulls.peakHour(evening, 0, hourOf) == 21)
+    check("they can wrap past midnight", Pulls.peakHour(List(4) { PullNote(atHour(23), Pull.BORED, "a", false) } + List(3) { PullNote(atHour(0), Pull.BORED, "a", false) }, 0, hourOf) == 23)
+    check("too few pulls: no peak", Pulls.peakHour(evening.take(5), 0, hourOf) == null)
+    check("spread out evenly: no peak", Pulls.peakHour(List(12) { PullNote(atHour(it * 2), Pull.BORED, "a", false) }, 0, hourOf) == null)
+
+    val rides = listOf(UrgeRide(now0 - 10, Pull.BORED, 4, 2, UrgeRide.LET_PASS), UrgeRide(now0 - 20, null, 3, 3, UrgeRide.OPENED),
+        UrgeRide(now0 - 30, Pull.LOW, 0, 0, UrgeRide.PRACTICE), UrgeRide(now0 - 40 * pday, Pull.LOW, 5, 1, UrgeRide.LET_PASS))
+    check("rides survive storage", Pulls.decodeRides(Pulls.encodeRides(rides)).let { d ->
+        d.size == 4 && d[1].pull == null && d[0].before == 4 && d[0].after == 2 && d[0].outcome == UrgeRide.LET_PASS
+    })
+    check("ride ratings stay within 0 to 5", Pulls.decodeRides("1|bored|9|-3|1").let { it.size == 1 && it[0].before == 5 && it[0].after == 0 })
+    val rideSum = Pulls.rides(rides, since30)
+    check("ride summary counts rated rides only for 'lower'", rideSum.rides == 3 && rideSum.rated == 2 && rideSum.lower == 1 && rideSum.passed == 1)
+    check("ride line", Pulls.rideLine(rideSum) == "You rode out 3 urges; the pull was lower afterwards 1 of 2 times." &&
+        Pulls.rideLine(Pulls.rides(emptyList(), 0)) == null && Pulls.rideLine(Pulls.rides(rides.take(1), 0)) == "You rode out 1 urge; the pull was lower afterwards.")
+    check("ride words are honest about the urge", Pulls.rideWords(4, 2).startsWith("From 4 to 2") && Pulls.rideWords(3, 3).startsWith("Still 3") &&
+        Pulls.rideWords(2, 4).startsWith("Up to 4") && Pulls.rideWords(0, 0).contains("still choose"))
+    check("the scale has five steps", Pulls.SCALE.size == 5)
+
+    val checks = listOf(AfterCheck(now0 - 5 * pday, "ig", -1), AfterCheck(now0 - 4 * pday, "ig", -1), AfterCheck(now0 - 3 * pday, "ig", 0),
+        AfterCheck(now0 - 2 * pday, "ig", -1), AfterCheck(now0 - pday, "yt", 1))
+    check("after-session answers survive storage", Pulls.decodeAfter(Pulls.encodeAfter(checks)).let { d -> d.size == 5 && d[0].feel == -1 && d[4].pkg == "yt" } &&
+        Pulls.decodeAfter("1|ig|7\n2|ig|1").size == 1)
+    check("how sessions felt, added up", Pulls.felt(checks, since30).let { it.better == 1 && it.same == 1 && it.worse == 3 && it.total == 5 } &&
+        Pulls.felt(checks, since30, "yt").total == 1)
+    check("the app you felt worse after: 3 answers or more, mostly worse", Pulls.worstApp(checks, since30)?.let { it.pkg == "ig" && it.worse == 3 && it.total == 4 } == true &&
+        Pulls.worstApp(checks.takeLast(2), since30) == null)
+    check("the pause remembers sessions that felt worse", Pulls.afterLine(checks, "ig", now0) == "You felt worse after 3 of your last 4 sessions here.")
+    check("and stays quiet otherwise", Pulls.afterLine(checks, "yt", now0) == null && Pulls.afterLine(checks.take(2), "ig", now0) == null &&
+        Pulls.afterLine(listOf(AfterCheck(1, "x", -1), AfterCheck(2, "x", 1), AfterCheck(3, "x", 0), AfterCheck(4, "x", -1)), "x", 10) == null)
+    check("worse each time", Pulls.afterLine(List(3) { AfterCheck(now0 - it, "x", -1) }, "x", now0) == "You felt worse after each of your last 3 sessions here.")
+    check("answers older than 30 days don't count", Pulls.afterLine(List(4) { AfterCheck(now0 - 31 * pday - it, "x", -1) }, "x", now0) == null)
+    val s0 = 1_000_000_000L
+    check("after a session: wait out the first minute", Pulls.afterAsk(s0, s0 + 30_000, 0) == AfterAsk.WAIT)
+    check("then ask", Pulls.afterAsk(s0, s0 + 5 * 60_000, 0) == AfterAsk.ASK)
+    check("but not hours later", Pulls.afterAsk(s0, s0 + 4 * 3_600_000L, 0) == AfterAsk.DROP)
+    check("at most three times a day", Pulls.afterAsk(s0, s0 + 5 * 60_000, 3) == AfterAsk.DROP && Pulls.afterAsk(s0, s0 + 5 * 60_000, 2) == AfterAsk.ASK)
+    check("no session, or the clock went back: let it go", Pulls.afterAsk(0, s0, 0) == AfterAsk.DROP && Pulls.afterAsk(s0, s0 - 10 * 60_000, 0) == AfterAsk.DROP)
+    check("keeps 60 days, and the newest", Pulls.keep(listOf(1L, 2L, 3L, 4L), { it }, Pulls.KEEP_MS + 2, 10) == listOf(3L, 4L) &&
+        Pulls.keep((1L..10L).toList(), { it }, 20, 3) == listOf(8L, 9L, 10L))
+    check("a plan reads as one sentence", Pulls.planLine(Pull.BORED, " read one page. ") == "When I'm bored, I'll read one page.")
+    val dayOf = { t: Long -> (t / pday).toString() }
+    check("low on 5 different days lately", Pulls.lowOften(List(5) { PullNote(now0 - it * pday - 1, Pull.LOW, "a", false) }, now0, dayOf))
+    check("not when it's the same day, or long ago", !Pulls.lowOften(List(9) { PullNote(now0 - it, Pull.LOW, "a", false) }, now0, dayOf) &&
+        !Pulls.lowOften(List(5) { PullNote(now0 - (20 + it) * pday, Pull.LOW, "a", false) }, now0, dayOf))
+
     // --- lessons are complete
     check("lessons have sources", Lessons.all.all { it.source.isNotBlank() && it.body.length > 60 && it.tryThis.isNotBlank() })
     check("lesson ids unique", Lessons.all.map { it.id }.toSet().size == Lessons.all.size)

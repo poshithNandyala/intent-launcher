@@ -26,11 +26,14 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextClock
 import android.widget.TextView
+import com.poshith.intent.core.AfterAsk
 import com.poshith.intent.core.Catalog
 import com.poshith.intent.core.Decision
 import com.poshith.intent.core.Mode
+import com.poshith.intent.core.Pulls
 import com.poshith.intent.data.AppEntry
 import com.poshith.intent.data.Apps
+import com.poshith.intent.data.Noticed
 import com.poshith.intent.data.Stats
 import com.poshith.intent.data.Store
 import com.poshith.intent.data.Usage
@@ -186,6 +189,8 @@ class HomeActivity : BaseActivity() {
         }
         maybeCheckIn()
         ui.postDelayed({ if (resumed) maybeCheckIn() }, 500)
+        // Back from a session: how did it feel? (after the unlock question has had its chance)
+        ui.postDelayed({ if (resumed) maybeAfterCheck() }, 900)
         if (away) { away = false; settle() }
         if (reopenQuiet && breakScreen == null) {
             reopenQuiet = false
@@ -207,6 +212,7 @@ class HomeActivity : BaseActivity() {
         super.onStop()
         // Leave home clean for next time.
         away = true
+        afterToken = null
         hideCheckIn()
         library?.close(animate = false)
     }
@@ -781,6 +787,7 @@ class HomeActivity : BaseActivity() {
         if (at == 0L || at == shownCheckInFor) return
         if (SystemClock.elapsedRealtime() - at > 6_000) return
         shownCheckInFor = at
+        afterToken = null // the unlock question takes the place of a "how did it feel?"
         checkIn.removeAllViews()
         val g = alignGravity()
         val k = ink()
@@ -866,6 +873,62 @@ class HomeActivity : BaseActivity() {
             val at = shownCheckInFor
             ui.postDelayed({ if (shownCheckInFor == at) hideCheckIn() }, 8_000)
         }
+    }
+
+    // ---------------------------------------------------------------------------------- after a session
+
+    /** The "how did it feel?" on screen, so its own timers don't close anything else. */
+    private var afterToken: Any? = null
+
+    /**
+     * Back home after a session: "After YouTube, how do you feel?" Better, about the same, or worse. Once
+     * per session, only after a minute or more in the app, at most three times a day, and never in the
+     * way: no answer is fine, and it goes after a few seconds. Paying attention to what a habit actually
+     * gives you is how its pull gets re-learned (Ludwig, Brown & Brewer, 2020); the answers stay on the phone.
+     */
+    private fun maybeAfterCheck() {
+        if (!Store.askAfter || !Store.onboarded || hasBackLayers() || breakScreen != null) return
+        if (!::checkIn.isInitialized || checkIn.visibility == View.VISIBLE) return
+        if (com.poshith.intent.guard.Calls.active(this)) return
+        val (pkg, started) = Noticed.pendingAfter() ?: return
+        when (Pulls.afterAsk(started, System.currentTimeMillis(), Noticed.asksToday())) {
+            AfterAsk.WAIT -> return
+            AfterAsk.DROP -> { Noticed.clearPendingAfter(); return }
+            AfterAsk.ASK -> {}
+        }
+        // With Focus Guard counting the minutes actually spent in the app: barely used yet, ask another time.
+        val used = Store.sessions { b -> b[pkg]?.let { b.usedMs(pkg, SystemClock.elapsedRealtime()) } }
+        if (FocusGuardService.running && used != null && used < 45_000) return
+        Noticed.clearPendingAfter()
+        Noticed.noteAsked()
+        val k = ink()
+        val g = alignGravity()
+        val token = Any()
+        afterToken = token
+        checkIn.removeAllViews()
+        checkIn.addView(text("After ${Apps.labelFor(this, pkg)}, how do you feel?", scale(17f), k.text, Fonts.medium(this)).apply { gravity = g }, lp())
+        val flow = Flow(this).apply { setPadding(0, dp(12), 0, 0) }
+        fun chip(label: String, feel: Int) = Chip(this, label, k).apply { setOnClickListener { it.tick(); afterAnswered(pkg, feel, token) } }
+        flow.addView(chip("Better", 1))
+        flow.addView(chip("About the same", 0))
+        flow.addView(chip("Worse", -1))
+        checkIn.addView(flow, lp())
+        ui.postDelayed({ if (afterToken === token) { afterToken = null; hideCheckIn() } }, 15_000)
+        showCheckIn()
+    }
+
+    private fun afterAnswered(pkg: String, feel: Int, token: Any) {
+        if (afterToken !== token) return
+        Noticed.noteAfter(pkg, feel)
+        val k = ink()
+        val g = alignGravity()
+        checkIn.removeAllViews()
+        checkIn.addView(text(when (feel) {
+            1 -> "Good. That's what on purpose feels like."
+            0 -> "Noted. Worth knowing."
+            else -> "Noticing that is how a habit changes. Remember it next time the pull comes."
+        }, scale(16f), k.text, Fonts.medium(this)).apply { gravity = g; setLineSpacing(0f, 1.2f) }, lp())
+        ui.postDelayed({ if (afterToken === token) { afterToken = null; hideCheckIn() } }, 3_500)
     }
 
     private fun showCheckIn() {

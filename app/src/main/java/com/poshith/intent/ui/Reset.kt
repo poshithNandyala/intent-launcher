@@ -31,6 +31,9 @@ fun BaseActivity.resetSheet() {
     s.show()
 }
 
+/** A minute of long sighs, straight away (offered on the pause when stress is what's pulling). */
+fun BaseActivity.longSighs() = runReset(WAYS[1])
+
 private fun BaseActivity.runReset(w: ResetWay) {
     if (w.title == "Put the phone down" && com.poshith.intent.guard.FocusGuardService.lockScreen()) return
     val s = Sheet(this, w.title, null)

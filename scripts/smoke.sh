@@ -154,12 +154,18 @@ type_text "set"; record search
 adb shell input keyevent KEYCODE_BACK; sleep 1; adb shell input keyevent KEYCODE_BACK; sleep 1
 swipe 15 50 85 50;  record practice
 expect_text "A one-minute reset" practice
+expect_text "Ride the urge" practice
 adb shell input keyevent KEYCODE_BACK
 adb shell input swipe "$((W / 2))" "$((H / 2))" "$((W / 2))" "$((H / 2))" 900
 record long-press
 tap "Settings";           record settings
 swipe 50 75 50 45;        record settings-scrolled
 tap "Shorts and Reels";   record reels-settings
+adb shell input keyevent KEYCODE_BACK
+# Settings › Mindfulness (further down the list on small screens)
+for _ in 1 2 3 4; do python3 scripts/ui.py has "Mindfulness" > /dev/null 2>&1 && break; swipe 50 75 50 45; done
+tap "Mindfulness";        record mindfulness-settings
+expect_text "Ask what's pulling me" mindfulness-settings
 adb shell input keyevent KEYCODE_BACK
 adb shell input keyevent KEYCODE_BACK
 timeout 30 adb shell am start -n $PKG/.HomeActivity > /dev/null 2>&1; sleep 4
@@ -174,7 +180,15 @@ if adb shell pm list packages | grep -q "package:com.google.android.youtube"; th
     # Fresh install = first unlock of the day: morning quiet holds mindful apps. Skip it to see the pause.
     read -r qx qy < <(python3 scripts/ui.py coords "Hold to skip this morning" | head -1)
     if [ "$qx" -gt 0 ]; then adb shell input swipe "$qx" "$qy" "$qx" "$qy" 3800; record pause-real; fi
-    sleep 7;              record pause-after-breath   # expected: minute chips + "Open for 5 min", no questions
+    # "What's pulling you?" (on by default): an answer that fits, and riding the urge out
+    swipe 50 35 50 75                                   # back to the top, if the end of the breath scrolled down
+    tap "Bored";          record pause-pull
+    expect_text "Boredom isn't an emergency" pause-pull
+    tap "Ride it out";    record ride
+    expect_text "How strong is the pull" ride
+    adb shell input keyevent KEYCODE_BACK; sleep 1      # closes the ride; the pause is still there
+    sleep 7;              record pause-after-breath   # expected: minute chips + "Open for 5 min", no "What's it for?"
+    expect_top GateActivity pause-after-breath
     tap "Not now";        record after-not-now
 
     # Focus Guard: the same app opened from outside Intent (like a notification) still gets the pause

@@ -20,8 +20,7 @@ All of it lives in the app's private storage (one SharedPreferences file). Other
 - Small counters per day for the last 35 days: pauses shown, "Not now" taps, sessions started, "just checking" taps, and (with the Shorts & Reels guard) how many Shorts and Reels you swiped to. Older days are deleted automatically.
 - Current sessions: which app, the minutes and the purpose you picked ("Reply to someone"), minutes used. A session is deleted when it ends, and all of them after a reboot.
 - If you allow **usage access**: Intent reads Android's own usage statistics on demand to count unlocks and minutes in the apps you want to use less. It doesn't copy that history anywhere.
-
-Your answer to "How are you feeling?" is never saved. It only changes the suggestion on the pause screen you're looking at.
+- What you name on the pause, if you do (*Settings › Mindfulness*): which pull (bored, stressed…), in which app, when, and whether you went on to open it; how strong a pull was before and after you rode it out; and how you felt after a session (better, about the same, worse). These are kept for 60 days and deleted automatically after that; *Settings › Mindfulness › Delete what Intent noticed* deletes them all at once. Your plan for each pull ("When I'm bored, I'll read one page") stays until you change or remove it. Nothing here is a diagnosis or a score, and none of it leaves the phone.
 
 ## Permissions, and why
 

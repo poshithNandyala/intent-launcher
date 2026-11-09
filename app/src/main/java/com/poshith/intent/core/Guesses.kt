@@ -161,5 +161,28 @@ object Guesses {
             listOf("From people", "From streaks", "From 'suggested for you'"), 0),
     )
 
-    fun forLesson(id: String): Guess? = byId[id]
+    private val urges: Map<String, Guess> = mapOf(
+        "u-rain" to Guess("In RAIN, what do you do with the urge?",
+            listOf("Push it away", "Notice it and let it be", "Give in quickly to end it"), 1),
+        "u-curious" to Guess("Four months later, how many in the mindfulness group were smoke-free, against 6% in the standard program?",
+            listOf("About 8%", "About 15%", "About 31%"), 2),
+        "u-felt" to Guess("In an app program built on noticing how it felt, craving-related eating fell by about…",
+            listOf("10%", "40%", "90%"), 1),
+        "u-reason" to Guess("Which if-then plans cut unhealthy snacking?",
+            listOf("“If it's 3 pm…”", "“If I'm in the kitchen…”", "“If I'm bored…”"), 2),
+        "u-escape" to Guess("Which reason for reaching for the phone went along with more anxiety and depression?",
+            listOf("Boredom", "Escaping bad feelings"), 1),
+        "u-words" to Guess("People who tell their bad feelings apart precisely tend to…",
+            listOf("Drink less under stress", "Feel bad more often", "Ignore their feelings"), 0),
+        "u-avoid" to Guess("Upset people stopped procrastinating when they were told…",
+            listOf("The task was easy", "Their mood couldn't change for a while", "Someone was watching"), 1),
+        "u-call" to Guess("Compared with an email, how awkward did the phone call turn out to be?",
+            listOf("Much more awkward", "No more awkward", "Too awkward to finish"), 1),
+        "u-media" to Guess("When people tried to resist the urge to use media, how often did they fail?",
+            listOf("About 1 in 10 times", "About 4 in 10 times", "About 9 in 10 times"), 1),
+        "u-halt" to Guess("In HALT, what does the T stand for?",
+            listOf("Tempted", "Tired", "Tense"), 1),
+    )
+
+    fun forLesson(id: String): Guess? = byId[id] ?: urges[id]
 }

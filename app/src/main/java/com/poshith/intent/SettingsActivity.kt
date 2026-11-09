@@ -16,11 +16,13 @@ import android.widget.LinearLayout
 import com.poshith.intent.core.Catalog
 import com.poshith.intent.core.Feed
 import com.poshith.intent.core.Mode
+import com.poshith.intent.core.Pull
 import com.poshith.intent.core.Rule
 import com.poshith.intent.core.Schedule
 import com.poshith.intent.core.Window
 import com.poshith.intent.data.AppEntry
 import com.poshith.intent.data.Apps
+import com.poshith.intent.data.Noticed
 import com.poshith.intent.data.Stats
 import com.poshith.intent.data.Store
 import com.poshith.intent.data.Usage
@@ -49,6 +51,8 @@ import com.poshith.intent.ui.field
 import com.poshith.intent.ui.hbox
 import com.poshith.intent.ui.lp
 import com.poshith.intent.ui.paragraph
+import com.poshith.intent.ui.pullPlanSheet
+import com.poshith.intent.ui.rideSheet
 import com.poshith.intent.ui.ripple
 import com.poshith.intent.ui.row
 import com.poshith.intent.ui.scroller
@@ -114,6 +118,7 @@ class SettingsActivity : BaseActivity() {
             "notifications" -> pageNotifications()
             "grayscale" -> pageGrayscale()
             "plan" -> pagePlan()
+            "mindfulness" -> pageMindfulness()
             "privacy" -> pagePrivacy()
             "about" -> pageAbout()
             else -> pageMain()
@@ -220,6 +225,7 @@ class SettingsActivity : BaseActivity() {
             " · morning quiet " + (if (Store.morningQuietMin > 0) "${Store.morningQuietMin} min" else "off"), null) { go("focus") })
         add(row("Your plan", (Store.urgePlan.ifBlank { null }?.let { "When I feel the pull: $it" } ?: "Not set") +
             if (Store.eveningOn) " · evening look-back on" else "", null) { go("plan") })
+        add(row("Mindfulness", mindfulnessSummary(), null) { go("mindfulness") })
         add(sectionTitle("Your phone"))
         add(row("Protection and permissions", when (guardHealth) {
             Launch.Health.ON -> "Focus Guard on"
@@ -383,7 +389,7 @@ class SettingsActivity : BaseActivity() {
             if (!on) loosen("Turn off the short rest?", "Sessions close together won't get a rest.") { Store.restOn = false; render() }
             else { Store.restOn = true; render() }
         })
-        add(toggleRow("Ask how I feel", "Naming the feeling is where the habit loop breaks", Store.askFeeling) { Store.askFeeling = it })
+        add(row("Mindfulness", "What's pulling you, riding the urge out, how sessions felt", null) { go("mindfulness") })
     }
 
     private fun changeDefaults(pause: Int? = null, session: Int? = null, limit: Int? = null, escalate: Boolean? = null) {
@@ -570,6 +576,58 @@ class SettingsActivity : BaseActivity() {
             })
         }
     }
+
+    // ---------------------------------------------------------------------------------- mindfulness
+
+    private fun mindfulnessSummary(): String = when {
+        Store.askPull && Store.askAfter -> "Asks what's pulling you, and how sessions felt"
+        Store.askPull -> "Asks what's pulling you"
+        Store.askAfter -> "Asks how sessions felt"
+        else -> "Questions off · ride the urge any time"
+    }
+
+    /**
+     * Mindfulness: the pull check on the pause, the after-session question, a plan for each pull, and
+     * what Intent noticed (kept 60 days on this phone, deletable here).
+     */
+    private fun pageMindfulness() {
+        header("Mindfulness", "Notice the pull, name it, ride it out, and remember how it felt afterwards. All of it stays on this phone.")
+        add(toggleRow("Ask what's pulling me", "On the pause, while you breathe: bored, stressed, lonely… with an idea that fits. Never needed to open.", Store.askPull) {
+            Store.askPull = it
+        })
+        add(toggleRow("Ask how I felt after", "Back home after a session: better, the same or worse. If an app keeps leaving you worse, its pause says so.", Store.askAfter) {
+            Store.askAfter = it
+            if (!it) Noticed.clearPendingAfter()
+        })
+        add(row("Ride the urge now", "Recognize, Allow, Investigate, Nurture: about a minute and a half", null) {
+            rideSheet(null, fromPause = false) { render() }
+        })
+
+        add(sectionTitle("A plan for each pull"))
+        add(paragraph("A plan for your own reason tends to work better than one general plan. The pause shows it when you name that pull.", 14.5f, P.text3))
+        for (p in Pull.pulls) {
+            val plan = Noticed.plan(p)
+            add(row(p.whenWords, if (plan.isBlank()) "No plan yet" else "I'll $plan", null) {
+                pullPlanSheet(p) { render() }
+            })
+        }
+
+        add(sectionTitle("What Intent noticed"))
+        val pulls = Noticed.pulls().size
+        val rides = Noticed.rides().size
+        val afters = Noticed.afters().size
+        add(paragraph(if (pulls + rides + afters == 0) "Nothing yet. What you name on the pause shows up as patterns in Practice (swipe right on the home screen)."
+            else "${count(pulls, "pull")} named, ${count(rides, "urge")} ridden out, ${count(afters, "after-session answer")}. " +
+                "Kept for 60 days, only on this phone. The patterns are in Practice (swipe right on the home screen).", 14.5f))
+        if (pulls + rides + afters > 0) add(row("Delete what Intent noticed", "Your plans stay", null) {
+            val sh = Sheet(this, "Delete what Intent noticed?", "The pulls you named, your urge ratings and your after-session answers are deleted from this phone for good. Your plans stay.")
+            sh.add(button("Delete", Kind.PRIMARY) { Noticed.deleteAll(); sh.dismiss(); render() })
+            sh.add(button("Keep it", Kind.PLAIN) { sh.dismiss() })
+            sh.show()
+        })
+    }
+
+    private fun count(n: Int, what: String) = "$n $what" + if (n == 1) "" else "s"
 
     // ---------------------------------------------------------------------------------- strict mode
 
@@ -861,6 +919,7 @@ class SettingsActivity : BaseActivity() {
         header("Privacy")
         add(paragraph("Intent has no internet permission. It cannot send anything anywhere, and there are no accounts, ads, analytics or trackers.\n\n" +
             "Everything it knows (your rules, sessions, and simple daily counters like how often you chose “Not now”) stays in a private file on this phone. Uninstalling Intent deletes it.\n\n" +
+            "What you name on the pause (what was pulling you, how strong it was, how a session felt) is kept for 60 days, only here. Settings › Mindfulness deletes it.\n\n" +
             "Focus Guard, if you turn it on, sees only which app is in front, by package name. It can't read what's on your screen.\n\n" +
             "Usage access, if you allow it, is read on the phone to count unlocks and minutes. Nothing is stored apart from those counts.\n\n" +
             "The code is open source, so anyone can check all of this.", 16f, P.text))
@@ -888,9 +947,10 @@ class SettingsActivity : BaseActivity() {
             "• A short pause with an easy way out cut app openings by more than half (Grüning et al., PNAS 2023), so “Not now” is always the biggest button.\n" +
             "• People check about twice as often as they think (Andrews et al., 2015), so the numbers are honest.\n" +
             "• Rules set while calm work better than willpower in the moment (Allcott et al., 2022), so loosening a rule waits.\n" +
-            "• Essentials stay instant, because rules that are too strict get abandoned (Castelo et al., 2025).\n\n" +
+            "• Essentials stay instant, because rules that are too strict get abandoned (Castelo et al., 2025).\n" +
+            "• Naming what's pulling you, and a plan for that reason, beats general willpower (Lieberman et al., 2007; Adriaanse et al., 2009), so the pause asks, and answers with something that fits.\n\n" +
             "No app can promise a better brain. What Intent can do is make the thing you intended easy, and the thing you didn't intend a little slower.", 15.5f, P.text))
-        add(row("Practice", "A one-minute reset and ${com.poshith.intent.core.Lessons.all.size} short lessons, each with its source: swipe right on the home screen", null, null))
+        add(row("Practice", "A one-minute reset, riding the urge out, what pulls you, and ${com.poshith.intent.core.Lessons.all.size} short lessons, each with its source: swipe right on the home screen", null, null))
         add(row("Code and research notes", GITHUB.removePrefix("https://"), null) {
             Launch.tryStart(this, Intent(Intent.ACTION_VIEW, Uri.parse(GITHUB)), "No browser found")
         })

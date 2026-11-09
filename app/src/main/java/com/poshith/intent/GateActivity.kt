@@ -14,13 +14,15 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import com.poshith.intent.core.BlockReason
 import com.poshith.intent.core.Decision
-import com.poshith.intent.core.Feeling
 import com.poshith.intent.core.Limits
 import com.poshith.intent.core.Mode
+import com.poshith.intent.core.Pull
+import com.poshith.intent.core.Pulls
 import com.poshith.intent.core.Purpose
 import com.poshith.intent.core.Rule
 import com.poshith.intent.core.SessionBook
 import com.poshith.intent.data.Apps
+import com.poshith.intent.data.Noticed
 import com.poshith.intent.data.Stats
 import com.poshith.intent.data.Store
 import com.poshith.intent.data.Usage
@@ -37,6 +39,10 @@ import com.poshith.intent.ui.HoldButton
 import com.poshith.intent.ui.nextThing
 import com.poshith.intent.ui.emergencyLink
 import com.poshith.intent.ui.Kind
+import com.poshith.intent.ui.RideEnd
+import com.poshith.intent.ui.link
+import com.poshith.intent.ui.longSighs
+import com.poshith.intent.ui.rideSheet
 import com.poshith.intent.ui.P
 import com.poshith.intent.ui.button
 import com.poshith.intent.ui.confirmPhrase
@@ -46,15 +52,21 @@ import com.poshith.intent.ui.scroller
 import com.poshith.intent.ui.space
 import com.poshith.intent.ui.styleButton
 import com.poshith.intent.ui.text
+import com.poshith.intent.ui.tick
 import com.poshith.intent.ui.vbox
 import java.util.Date
 
 /**
  * The pause. Shown before a mindful app opens: one slow breath, then how many minutes, and an exit
  * that is always the biggest button. "What's it for?" comes only when it matters (the 4th open today,
- * or straight back after a session), and "How are you feeling?" only if you turned it on.
+ * or straight back after a session).
  * The design follows the one sec study (Grüning et al., PNAS 2023): a short delay plus an easy way
  * out is what cut openings, more than any message.
+ *
+ * While you breathe: "What's pulling you?" (core/Pulls). Naming it is optional and never needed to
+ * open; the answer gets a kind line, your own plan for that pull, and one idea that meets the actual
+ * need (a call when lonely, long sighs when stressed, riding the urge out when bored). If an app has
+ * mostly left you feeling worse lately, the pause says so, in your own answers.
  */
 class GateActivity : BaseActivity() {
 
@@ -83,7 +95,10 @@ class GateActivity : BaseActivity() {
     private var purpose: Purpose? = null
     private var askWhy = false
     private var scroll: android.widget.ScrollView? = null
-    private var feeling: Feeling? = null
+    /** What's pulling you, if you named it; written down once, when you leave the pause. */
+    private var pull: Pull? = null
+    private var pullLogged = false
+    private var planLine: TextView? = null
     private var pauseDone = false
     private var openBtn: TextView? = null
     private lateinit var bar: LinearLayout
@@ -97,6 +112,7 @@ class GateActivity : BaseActivity() {
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+        logPull(opened = false)
         setIntent(intent)
         read(intent)
         build()
@@ -107,14 +123,22 @@ class GateActivity : BaseActivity() {
         key = i.getStringExtra(EXTRA_KEY)
         fromLauncher = i.getBooleanExtra(EXTRA_LAUNCHER, true)
         label = Apps.labelFor(this, pkg)
-        purpose = null; feeling = null; pauseDone = false; leaving = false; askWhy = false
+        purpose = null; pull = null; pullLogged = false; planLine = null; pauseDone = false; leaving = false; askWhy = false
         minutes = Store.rule(pkg).sessionMin
     }
 
     override fun onStop() {
         super.onStop()
-        // Never leave a stale pause screen behind: if you went elsewhere, it's gone.
-        if (!leaving && !isFinishing && !isChangingConfigurations) finish()
+        // Never leave a stale pause screen behind: if you went elsewhere, it's gone (and nothing opened).
+        if (!leaving && !isFinishing && !isChangingConfigurations) { logPull(opened = false); finish() }
+    }
+
+    /** Writes down what pulled you, once, with whether you went on to open the app. */
+    private fun logPull(opened: Boolean) {
+        val p = pull ?: return
+        if (pullLogged || pkg.isEmpty()) return
+        pullLogged = true
+        Noticed.notePull(p, pkg, opened)
     }
 
     override fun onBackRoot() = notNow()
@@ -193,6 +217,9 @@ class GateActivity : BaseActivity() {
             val ms = Usage.today(this)?.foregroundMs?.get(pkg) ?: return@run
             if (ms >= 60_000) runOnUiThread { if (!isDestroyed) countLine.text = sessionsLine(d.opensToday) + " · " + Usage.formatMinutes(ms) + " so far" }
         }
+        // How it felt afterwards, in your own answers, when it was mostly worse: the real reward, remembered
+        // at the moment the app promises another one.
+        if (Store.askAfter) Pulls.afterLine(Noticed.afters(), pkg, System.currentTimeMillis())?.let { line(col, it, P.text2, 14.5f, 4) }
 
         // One slow breath.
         val breath = BreathView(this)
@@ -202,24 +229,29 @@ class GateActivity : BaseActivity() {
         breath.onPhase = { p -> phase.text = p.words }
         breath.start(d.pauseMs)
 
-        // How are you feeling? (affect labeling + Dr. Yousef's "cognitive pause")
-        val nudge = text("", 15f, P.text2).apply { gravity = Gravity.CENTER; setLineSpacing(0f, 1.2f); visibility = View.GONE }
-        val nudgeAction = vbox(Gravity.CENTER_HORIZONTAL)
-        if (Store.askFeeling) {
-            question(col, "How are you feeling?")
+        // What's pulling you? Naming it is where the habit loop can break (affect labeling); optional, and
+        // never needed to open.
+        val reply = text("", 15.5f, P.text).apply {
+            gravity = Gravity.CENTER; setLineSpacing(0f, 1.25f); visibility = View.GONE
+            accessibilityLiveRegion = View.ACCESSIBILITY_LIVE_REGION_POLITE
+        }
+        val replyActions = vbox(Gravity.CENTER_HORIZONTAL)
+        if (Store.askPull) {
+            question(col, "What's pulling you?")
             val flow = Flow(this, centered = true)
             val chips = ArrayList<Chip>()
-            for (f in Feeling.values()) {
-                val c = Chip(this, f.label)
+            for (p in Pull.values()) {
+                val c = Chip(this, p.label)
                 c.setOnClickListener {
-                    feeling = f; chips.forEach { x -> x.on = x === c }
-                    showNudge(f, nudge, nudgeAction)
+                    it.tick()
+                    pull = p; chips.forEach { x -> x.on = x === c }
+                    showReply(p, reply, replyActions)
                 }
                 chips += c; flow.addView(c)
             }
             col.addView(flow, lp())
-            col.addView(nudge, lp().apply { topMargin = dp(12) })
-            col.addView(nudgeAction, lp())
+            col.addView(reply, lp().apply { topMargin = dp(16) })
+            col.addView(replyActions, lp())
         }
 
         // After the breath: just how long. "What's it for?" only when it matters: the 4th time today
@@ -257,8 +289,8 @@ class GateActivity : BaseActivity() {
         after.addView(mFlow, lp().apply { topMargin = dp(if (askWhy) 18 else 26) })
         if (left != null) line(after, "$left of ${Store.budgetMin} min left today, for all the apps you want to use less", P.text2, 14f, 12)
 
-        val plan = Store.urgePlan
-        if (plan.isNotBlank()) line(after, "Your plan: when I feel the pull, I'll $plan.", P.text2, 14f, 22)
+        planLine = line(after, "", P.text2, 14f, 22)
+        updatePlanLine()
 
         bar.addView(button("Not now", Kind.PRIMARY) { notNow() }, lp())
         val open = button("", Kind.OUTLINE) { proceed(minutes, purpose?.label ?: "") }.apply { visibility = View.GONE }
@@ -273,7 +305,13 @@ class GateActivity : BaseActivity() {
             reveal(after)
             reveal(open)
             refreshOpen()
-            after.post { scroll?.smoothScrollTo(0, after.top - dp(24)) }
+            // Show what comes next. If you're reading the answer to what's pulling you, it stays where it is,
+            // unless opening needs "What's it for?": then just enough of that comes into view at the bottom.
+            after.post {
+                val sc = scroll ?: return@post
+                if (pull == null) sc.smoothScrollTo(0, after.top - dp(24))
+                else if (askWhy) (after.top + dp(140) - sc.height).let { want -> if (want > sc.scrollY) sc.smoothScrollTo(0, want) }
+            }
         }
     }
 
@@ -286,22 +324,71 @@ class GateActivity : BaseActivity() {
         v.animate().alpha(1f).translationY(0f).setDuration(420).setInterpolator(android.view.animation.DecelerateInterpolator(2f)).start()
     }
 
-    private fun showNudge(f: Feeling, nudge: TextView, actions: LinearLayout) {
+    /**
+     * The answer to what's pulling you: one kind line, your own plan for that pull if you made one, and
+     * one idea that meets the actual need. For a feeling, riding the urge out is always offered too.
+     */
+    private fun showReply(p: Pull, reply: TextView, actions: LinearLayout) {
+        reply.text = p.reply
+        reply.visibility = View.VISIBLE
         actions.removeAllViews()
-        if (f.nudge.isEmpty()) { nudge.visibility = View.GONE; return }
-        nudge.text = f.nudge
-        nudge.visibility = View.VISIBLE
-        when (f.action) {
-            Feeling.Action.CALL -> actions.addView(button("Call someone instead", Kind.QUIET) {
-                Stats.notNow(pkg); leaving = true; Launch.dialer(this); finish()
-            }, lp().apply { topMargin = dp(10) })
-            Feeling.Action.ONE_THING -> Store.todayIntention()?.let { one ->
-                actions.addView(text("Your one thing: $one", 15f, P.accent, Fonts.medium(this)).apply {
-                    gravity = Gravity.CENTER; setPadding(0, dp(8), 0, 0)
-                }, lp())
+        fun gap() = lp().apply { topMargin = dp(12) }
+        val plan = Noticed.plan(p).takeIf { p.isPull && it.isNotBlank() }
+        if (plan != null) actions.addView(text("Your plan: " + Pulls.planLine(p, plan), 15f, P.accent, Fonts.medium(this)).apply {
+            gravity = Gravity.CENTER; setLineSpacing(0f, 1.2f); setPadding(0, dp(10), 0, 0)
+        }, lp())
+        var offersRide = false
+        when (p.action) {
+            Pull.Action.RIDE -> { actions.addView(button("Ride it out · 90 s", Kind.QUIET) { ride() }, gap()); offersRide = true }
+            Pull.Action.SIGHS -> actions.addView(button("A minute of long sighs", Kind.QUIET) { longSighs() }, gap())
+            Pull.Action.CALL -> actions.addView(button("Call someone instead", Kind.QUIET) {
+                if (leaving) return@button
+                leaving = true
+                logPull(opened = false)
+                Stats.notNow(pkg)
+                Launch.dialer(this); finish()
+            }, gap())
+            Pull.Action.REST -> actions.addView(button("Put the phone down", Kind.QUIET) {
+                notNow("Not now. Rest your eyes.")
+                // Locks the screen when Focus Guard can; otherwise it's simply back home.
+                FocusGuardService.lockScreen()
+            }, gap())
+            Pull.Action.ONE_THING -> {
+                val one = Store.todayIntention()
+                if (one != null) {
+                    actions.addView(text("Your one thing: $one", 15f, P.accent, Fonts.medium(this)).apply {
+                        gravity = Gravity.CENTER; setLineSpacing(0f, 1.2f); setPadding(0, dp(10), 0, 0)
+                    }, lp())
+                    val start = Store.todayStep() ?: one
+                    actions.addView(button("Do two minutes of it", Kind.QUIET) { notNow("Two minutes of: $start. Go.") }, gap())
+                } else { actions.addView(button("Ride it out · 90 s", Kind.QUIET) { ride() }, gap()); offersRide = true }
             }
-            Feeling.Action.NONE -> {}
+            Pull.Action.NONE -> {}
         }
+        if (p.feeling && !offersRide) actions.addView(link("Or ride the urge out, 90 s") { ride() }, lp(ViewGroup.LayoutParams.WRAP_CONTENT).apply {
+            gravity = Gravity.CENTER_HORIZONTAL; topMargin = dp(4)
+        })
+        updatePlanLine()
+        // Keep the answer in view: scroll just enough to show it, and nothing jumps away from it later.
+        actions.post {
+            val sc = scroll ?: return@post
+            val bottom = actions.bottom + dp(12)
+            if (bottom > sc.scrollY + sc.height) sc.smoothScrollTo(0, bottom - sc.height)
+        }
+    }
+
+    /** RAIN, from the pause: "Let it pass" leaves; "Open anyway" (or closing it) comes back here. */
+    private fun ride() = rideSheet(pull, fromPause = true) { end ->
+        if (end == RideEnd.LET_PASS) notNow("Not now. You rode it out.")
+    }
+
+    /** Your general plan for the pull, after the breath, unless the pull you named has its own (shown above). */
+    private fun updatePlanLine() {
+        val t = planLine ?: return
+        val own = pull?.let { p -> p.isPull && Noticed.plan(p).isNotBlank() } == true
+        val plan = Store.urgePlan
+        t.text = "Your plan: when I feel the pull, I'll $plan."
+        t.visibility = if (plan.isBlank() || own) View.GONE else View.VISIBLE
     }
 
     private fun refreshOpen() {
@@ -433,16 +520,20 @@ class GateActivity : BaseActivity() {
 
     // ---------------------------------------------------------------------------------- actions
 
-    private fun notNow() {
+    /** Leave without opening. [said]: the line the home screen shows (otherwise your plan, or a count). */
+    private fun notNow(said: String? = null) {
         if (leaving) return
         leaving = true
+        logPull(opened = false)
         Stats.notNow(pkg)
         FocusGuardService.saidNotNow(pkg)
         Store.sessions { it.close(pkg) }
         val n = Stats.notNowToday()
-        // Leaving is the easy choice, and the next thing to do is the one you picked yourself.
-        val plan = Store.urgePlan
+        // Leaving is the easy choice, and the next thing to do is the one you picked yourself: your plan
+        // for the pull you named, or your plan for any pull.
+        val plan = pull?.let { p -> Noticed.plan(p).takeIf { p.isPull && it.isNotBlank() } } ?: Store.urgePlan
         Store.flash = when {
+            said != null -> said
             plan.isNotBlank() -> "Not now. Your plan: $plan."
             n == 1 -> "Not now. Nice."
             else -> "Not now. That's $n times today."
@@ -469,6 +560,9 @@ class GateActivity : BaseActivity() {
         val mindful = Store.rule(pkg).mode == Mode.MINDFUL
         Stats.sessionStarted(pkg, min, mindful)
         if (mindful) Store.noteSessionStart(System.currentTimeMillis())
+        logPull(opened = true)
+        // Back home after it: "How do you feel?" (once, and only if you spent a minute or more in it).
+        if (mindful && Store.askAfter) Noticed.expectAfter(pkg)
         if (!guard) Reminder.schedule(this, pkg, min)
         openApp()
     }

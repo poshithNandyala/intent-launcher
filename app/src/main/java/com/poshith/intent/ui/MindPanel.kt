@@ -12,16 +12,19 @@ import com.poshith.intent.core.Evidence
 import com.poshith.intent.core.Lesson
 import com.poshith.intent.core.Lessons
 import com.poshith.intent.core.Mode
+import com.poshith.intent.core.Pulls
 import com.poshith.intent.core.Topic
+import com.poshith.intent.data.Apps
+import com.poshith.intent.data.Noticed
 import com.poshith.intent.data.Stats
 import com.poshith.intent.data.Store
 import com.poshith.intent.data.Usage
 import java.util.Calendar
 
 /**
- * Practice (swipe right on the home screen): a one-minute reset, today's idea, your week, and a short
- * library of lessons from research, each with its source and an honest evidence label. A finite page:
- * it ends, on purpose. No progress bar, nothing to keep up with.
+ * Practice (swipe right on the home screen): a one-minute reset, riding the urge out, today's idea, your
+ * week, what pulls you, and a short library of lessons from research, each with its source and an honest
+ * evidence label. A finite page: it ends, on purpose. No progress bar, nothing to keep up with.
  */
 class MindPanel(private val a: BaseActivity) {
     private val root = FrameLayout(a)
@@ -86,6 +89,18 @@ class MindPanel(private val a: BaseActivity) {
         })
         col.addView(card(reset, tappable = true), lp().apply { leftMargin = a.dp(16); rightMargin = a.dp(16); topMargin = a.dp(14) })
 
+        // For a strong pull: RAIN, guided.
+        val ride = a.vbox().apply {
+            setPadding(a.dp(20), a.dp(18), a.dp(20), a.dp(18))
+            isClickable = true
+            setOnClickListener { it.tick(); a.rideSheet(null, fromPause = false) { rebuild() } }
+        }
+        ride.addView(a.text("Ride the urge", 18f, P.text, Fonts.medium(a)))
+        ride.addView(a.text("For a strong pull: notice it, let it be, feel where it sits, be kind. About a minute and a half.", 15f, P.text2).apply {
+            setLineSpacing(0f, 1.2f); setPadding(0, a.dp(6), 0, 0)
+        })
+        col.addView(card(ride, tappable = true), lp().apply { leftMargin = a.dp(16); rightMargin = a.dp(16); topMargin = a.dp(10) })
+
         // Today's idea, as a small puzzle.
         val today = Lessons.forDay(System.currentTimeMillis() / 86_400_000L)
         col.addView(a.sectionTitle("Today's idea"))
@@ -120,6 +135,10 @@ class MindPanel(private val a: BaseActivity) {
             if (text.isNotBlank()) a.runOnUiThread { if (!a.isDestroyed) { usageLine.text = text; usageLine.visibility = View.VISIBLE } }
         }
 
+        // What pulls you: your own answers from the pause, as patterns. Only on this phone.
+        col.addView(a.sectionTitle("What pulls you"))
+        col.addView(card(pullsCard()), lp().apply { leftMargin = a.dp(16); rightMargin = a.dp(16) })
+
         // The library: tap any idea to guess and read it. No progress bar: it's there when you want it.
         for (t in Topic.values()) {
             col.addView(a.sectionTitle(t.title))
@@ -138,6 +157,87 @@ class MindPanel(private val a: BaseActivity) {
 
     private fun line(s: String, color: Int = P.text2): TextView = a.text(s, 15f, color).apply {
         setLineSpacing(0f, 1.2f); setPadding(0, a.dp(8), 0, 0)
+    }
+
+    /** Rebuilds the page where you were (after a ride, or a plan). */
+    private fun rebuild() {
+        if (!isOpen) return
+        val y = sc.scrollY
+        build()
+        sc.post { sc.scrollTo(0, y) }
+    }
+
+    /**
+     * Your pulls over the last 30 days: the most common ones, when they come, how often you let them pass,
+     * how riding them out went, and how sessions felt afterwards. Then a plan for your top pull, because
+     * a plan for your own reason works better than a general one (Adriaanse et al., 2009).
+     */
+    private fun pullsCard(): View {
+        val v = a.vbox().apply { setPadding(a.dp(20), a.dp(16), a.dp(20), a.dp(16)) }
+        val now = System.currentTimeMillis()
+        val since = now - com.poshith.intent.core.Pulls.WINDOW_MS
+        val notes = Noticed.pulls()
+        val top = Pulls.top(notes, since)
+        val headline = Pulls.headline(top)
+        if (headline == null) {
+            v.addView(a.text("Nothing named yet", 17f, P.text, Fonts.medium(a)))
+            v.addView(line(if (Store.askPull) "When the pause asks what's pulling you, your answers stay on this phone and show up here as patterns."
+                else "Turn on “Ask what's pulling me” in Settings › Mindfulness, and your answers show up here as patterns."))
+        } else {
+            v.addView(a.text(headline, 17f, P.text, Fonts.medium(a)))
+            val most = top.first().n
+            for (c in top.take(4)) v.addView(bar(c.pull.label, c.n, most), lp())
+            Pulls.peakHour(notes, since) { t -> Calendar.getInstance().apply { timeInMillis = t }.get(Calendar.HOUR_OF_DAY) }?.let { h ->
+                v.addView(line("They come most between ${hourLabel(h)} and ${hourLabel((h + 2) % 24)}."))
+            }
+            val passed = Pulls.letPass(notes, since)
+            if (passed.total >= 3) v.addView(line("You let it pass ${passed.passed} of ${passed.total} times."))
+        }
+        Pulls.rideLine(Pulls.rides(Noticed.rides(), since))?.let { v.addView(line(it)) }
+        val afters = Noticed.afters()
+        val felt = Pulls.felt(afters, since)
+        if (felt.total > 0) v.addView(line("After a session: better ${felt.better} · about the same ${felt.same} · worse ${felt.worse}"))
+        Pulls.worstApp(afters, since)?.let { w -> v.addView(line("Worse most often after ${Apps.labelFor(a, w.pkg)} (${w.worse} of ${w.total}).")) }
+
+        // A plan for the pull that comes most.
+        top.firstOrNull()?.pull?.let { p ->
+            val plan = Noticed.plan(p)
+            if (plan.isBlank()) v.addView(a.button("Make a plan for ${p.youWords}", Kind.QUIET) { a.pullPlanSheet(p) { rebuild() } },
+                lp().apply { topMargin = a.dp(14) })
+            else {
+                v.addView(line("Your plan: " + Pulls.planLine(p, plan), P.accent))
+                v.addView(a.link("Change it") { a.pullPlanSheet(p) { rebuild() } }.apply {
+                    gravity = Gravity.START or Gravity.CENTER_VERTICAL; setPadding(0, 0, a.dp(16), 0)
+                }, lp(ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+        }
+        if (Pulls.lowOften(notes, now) { Store.dayKey(it) }) v.addView(line("If you've felt low on most days for two weeks or more, a doctor or therapist can help. You don't have to sort it out alone.", P.text))
+        v.addView(a.text("The last 30 days, kept only on this phone.", 13f, P.text2).apply { setPadding(0, a.dp(12), 0, 0) })
+        return v
+    }
+
+    /** One pull, with a thin bar for how often (relative to the most common one). */
+    private fun bar(label: String, n: Int, most: Int): View {
+        val row = a.hbox().apply {
+            setPadding(0, a.dp(10), 0, 0)
+            contentDescription = "$label, $n ${if (n == 1) "time" else "times"}"
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_YES
+            isFocusable = true
+        }
+        row.addView(a.text(label, 15f, P.text).apply { importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO },
+            lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.46f))
+        val track = LinearLayout(a).apply { orientation = LinearLayout.HORIZONTAL; weightSum = most.toFloat() }
+        track.addView(View(a).apply { background = rounded(P.accent, a.dp(3).toFloat()) },
+            LinearLayout.LayoutParams(0, a.dp(6), n.toFloat()))
+        row.addView(track, lp(0, a.dp(6), 0.42f).apply { gravity = Gravity.CENTER_VERTICAL })
+        row.addView(a.text("$n", 14f, P.text2).apply { gravity = Gravity.END; importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO },
+            lp(0, ViewGroup.LayoutParams.WRAP_CONTENT, 0.12f))
+        return row
+    }
+
+    private fun hourLabel(h: Int): String {
+        val c = Calendar.getInstance(); c.set(Calendar.HOUR_OF_DAY, h); c.set(Calendar.MINUTE, 0)
+        return android.text.format.DateFormat.getTimeFormat(a).format(c.time)
     }
 
     private fun card(content: View, tappable: Boolean = false): View = FrameLayout(a).apply {
