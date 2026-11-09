@@ -1,0 +1,2 @@
+Starting: Intent { cmp=com.poshith.intent/.HomeActivity }
+Warning: Activity not started, its current task has been brought to the front
