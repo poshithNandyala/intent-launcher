@@ -1,0 +1,1 @@
+    mResumedActivity: ActivityRecord{702e28a u0 com.poshith.intent/.HomeActivity t21}

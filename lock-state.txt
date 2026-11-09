@@ -1,0 +1,2 @@
+    mShowingDream=false mDreamingLockscreen=false    mStatusBar=Window{36c8300 u0 StatusBar}    mExpandedPanel=Window{34f81e7 u0 NotificationShade} isKeyguardShowing=false
+  mWakefulness=Asleep
